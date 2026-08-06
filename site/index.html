@@ -28,18 +28,19 @@
       </nav>
       <div class="nav-actions">
         <button id="accountBtn" class="account-btn">Log In</button>
+        <!-- Shown instead of "Log In" once signed in — nested inside
+             nav-actions (position:relative) so it anchors right under
+             the account button instead of the page's top-left corner. -->
+        <div id="accountMenu" class="account-menu">
+          <button id="myOrdersBtn" class="account-menu-item">My Orders</button>
+          <button id="logoutBtn" class="account-menu-item">Log Out</button>
+        </div>
         <button id="cartBtn" class="cart-btn" aria-label="Open cart">
           Cart <span id="cartCount" class="cart-count">0</span>
         </button>
       </div>
     </div>
   </header>
-
-  <!-- ===== ACCOUNT MENU (shown instead of Log In once signed in) ===== -->
-  <div id="accountMenu" class="account-menu">
-    <button id="myOrdersBtn" class="account-menu-item">My Orders</button>
-    <button id="logoutBtn" class="account-menu-item">Log Out</button>
-  </div>
 
   <!-- ===== HERO (full-bleed slide carousel — the photo does the talking) ===== -->
   <section id="top" class="hero">
