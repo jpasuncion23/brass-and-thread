@@ -678,6 +678,19 @@ button {
   font-size: 0.82rem;
 }
 
+.footer-admin-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.footer-admin-link:hover {
+  opacity: 1;
+  color: var(--stamp);
+}
+
 /* ===== OVERLAY ===== */
 .overlay {
   position: fixed;
