@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brass & Thread — Overrun Shirts</title>
+  <meta name="description" content="Overrun and surplus shirts, sold while the batch lasts. No account needed." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Anton&family=Special+Elite&family=Work+Sans:ital,wght@0,400;0,500;0,600;0,700;1,500&family=IBM+Plex+Mono:wght@500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== NAVBAR (overlays the hero, solidifies on scroll) ===== -->
+  <header id="navbar" class="navbar">
+    <div class="navbar-inner">
+      <a href="#top" class="logo">Brass <em>&amp;</em> Thread</a>
+      <nav class="nav-links">
+        <a href="#shop">Shop</a>
+        <a href="#how">How It Works</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <div class="nav-actions">
+        <button id="accountBtn" class="account-btn">Log In</button>
+        <button id="cartBtn" class="cart-btn" aria-label="Open cart">
+          Cart <span id="cartCount" class="cart-count">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== ACCOUNT MENU (shown instead of Log In once signed in) ===== -->
+  <div id="accountMenu" class="account-menu">
+    <button id="myOrdersBtn" class="account-menu-item">My Orders</button>
+    <button id="logoutBtn" class="account-menu-item">Log Out</button>
+  </div>
+
+  <!-- ===== HERO (full-bleed slide carousel — the photo does the talking) ===== -->
+  <section id="top" class="hero">
+    <div id="heroSlides" class="hero-slides"></div>
+    <div class="hero-overlay"></div>
+
+    <button id="heroPrev" class="hero-arrow hero-arrow-prev" aria-label="Previous slide">‹</button>
+    <button id="heroNext" class="hero-arrow hero-arrow-next" aria-label="Next slide">›</button>
+    <div id="heroDots" class="hero-dots"></div>
+
+    <div class="floating-badge">🔥 New batch dropped this week</div>
+  </section>
+
+  <!-- ===== INTRO — the headline lives here now, off the photo ===== -->
+  <section class="intro-section">
+    <p id="heroKicker" class="kicker"></p>
+    <h1 id="heroHeadline"></h1>
+    <p id="heroSub" class="hero-sub"></p>
+    <a href="#shop" class="btn btn-primary">Browse the Batch</a>
+  </section>
+
+  <!-- ===== FLOATING CHAT WIDGET ===== -->
+  <div id="chatPopover" class="chat-popover">
+    <p class="chat-popover-title">Message us</p>
+    <p class="chat-popover-text">Questions about an order or stock? Message us:</p>
+    <a href="tel:+639000000000" class="chat-popover-link">📞 +63 900 000 0000</a>
+    <a href="mailto:hello@brassandthread.ph" class="chat-popover-link">✉️ hello@brassandthread.ph</a>
+  </div>
+  <button id="chatBubble" class="chat-bubble" aria-label="Open chat">💬 Chat</button>
+
+  <!-- ===== SHOP GRID ===== -->
+  <section id="shop" class="shop-section">
+    <div class="section-head">
+      <p class="kicker">Available Now</p>
+      <h2>The Current Batch</h2>
+      <p class="section-sub">Stock counts below are live — the same number the owner sees.</p>
+    </div>
+
+    <div id="loadState" class="load-state">Loading stock…</div>
+    <div id="productGrid" class="product-grid"></div>
+  </section>
+
+  <!-- ===== HOW IT WORKS ===== -->
+  <section id="how" class="how-section">
+    <div class="section-head">
+      <p class="kicker">No Account Needed</p>
+      <h2>Three Steps, One Form</h2>
+    </div>
+    <div class="how-grid">
+      <div class="how-card">
+        <span class="how-num">01</span>
+        <h3>Add to cart</h3>
+        <p>Browse the batch, pick your size and color while it's still there.</p>
+      </div>
+      <div class="how-card">
+        <span class="how-num">02</span>
+        <h3>Fill out one form</h3>
+        <p>Name, contact number, email, address if you need delivery, and how you'll pay.</p>
+      </div>
+      <div class="how-card">
+        <span class="how-num">03</span>
+        <h3>We reach out</h3>
+        <p>Stock is deducted the moment you order — we'll confirm and arrange delivery or pickup.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CONTACT ===== -->
+  <section id="contact" class="contact-section">
+    <h2>Questions about an order?</h2>
+    <p>Just message us at the contact number you left on your order — we can see all your order details on our end.</p>
+  </section>
+
+  <footer class="footer">
+    <p>&copy; 2026 Brass &amp; Thread — Overrun Shirt Storefront. Powered by ShopTrack.</p>
+  </footer>
+
+  <!-- ===== CART DRAWER ===== -->
+  <div id="cartOverlay" class="overlay"></div>
+  <aside id="cartDrawer" class="cart-drawer">
+    <div class="drawer-header">
+      <h3>Your Manifest</h3>
+      <button id="closeCart" class="icon-btn" aria-label="Close cart">✕</button>
+    </div>
+    <div id="cartItems" class="cart-items">
+      <p class="cart-empty">Your cart is empty.</p>
+    </div>
+    <div class="drawer-footer">
+      <div class="cart-total-row">
+        <span>Total</span>
+        <span id="cartTotal">₱0</span>
+      </div>
+      <button id="checkoutBtn" class="btn btn-primary btn-full" disabled>Checkout</button>
+    </div>
+  </aside>
+
+  <!-- ===== CHECKOUT MODAL ===== -->
+  <div id="checkoutOverlay" class="overlay"></div>
+  <div id="checkoutModal" class="modal">
+    <div class="modal-header">
+      <h3>Order Slip</h3>
+      <button id="closeCheckout" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+
+    <form id="checkoutForm" class="stack-form">
+      <div id="checkoutSummary" class="order-summary"></div>
+
+      <label>Full name <span class="req">*</span>
+        <input type="text" id="fullName" required placeholder="Juan Dela Cruz" />
+      </label>
+      <label>Contact number <span class="req">*</span>
+        <input type="tel" id="contactNumber" required placeholder="09xx xxx xxxx" />
+      </label>
+      <label>Email <span class="req">*</span>
+        <input type="email" id="email" required placeholder="you@gmail.com" />
+      </label>
+      <label>Delivery address <span class="opt">(optional)</span>
+        <textarea id="address" rows="2" placeholder="Street, Barangay, City"></textarea>
+      </label>
+      <label>Payment method <span class="req">*</span>
+        <select id="paymentMethod" required>
+          <option value="" disabled selected>Select a payment method</option>
+          <option value="COD">Cash on Delivery (COD)</option>
+          <option value="GCash">GCash</option>
+        </select>
+      </label>
+      <label>Order notes <span class="opt">(optional)</span>
+        <textarea id="orderNotes" rows="2" placeholder="Size swap, delivery timing, etc."></textarea>
+      </label>
+
+      <p id="checkoutError" class="form-error"></p>
+      <button type="submit" id="placeOrderBtn" class="btn btn-primary btn-full">Place Order</button>
+    </form>
+  </div>
+
+  <!-- ===== CONFIRMATION MODAL ===== -->
+  <div id="confirmOverlay" class="overlay"></div>
+  <div id="confirmModal" class="modal modal-confirm">
+    <div class="confirm-stamp">Confirmed</div>
+    <h3 id="confirmTitle">Order Placed</h3>
+    <p id="confirmText"></p>
+    <button id="closeConfirm" class="btn btn-primary btn-full">Continue Shopping</button>
+  </div>
+
+  <!-- ===== AUTH MODAL — optional account, guest checkout still works without it ===== -->
+  <div id="authOverlay" class="overlay"></div>
+  <div id="authModal" class="modal auth-modal">
+    <h3 id="authModalTitle">Register Your Account</h3>
+    <p class="auth-note">
+      This is optional — you can still check out as a guest without an
+      account. Creating one just saves your details for next time and
+      lets you view your order history.
+    </p>
+
+    <form id="authForm" class="auth-form">
+      <div id="authNameRow" class="form-row hidden">
+        <label>First Name
+          <input type="text" id="authFirstName" placeholder="First Name" />
+        </label>
+        <label>Last Name
+          <input type="text" id="authLastName" placeholder="Last Name" />
+        </label>
+      </div>
+      <label>Email
+        <input type="email" id="authEmail" required placeholder="Email" />
+      </label>
+      <label>Password
+        <input type="password" id="authPassword" required minlength="6" placeholder="Password" />
+      </label>
+      <p id="authError" class="form-error"></p>
+
+      <button type="submit" id="authSubmitBtn" class="auth-submit-btn">Submit</button>
+      <button type="button" id="authCancelBtn" class="auth-cancel-btn">Cancel</button>
+    </form>
+
+    <p class="auth-switch">
+      <span id="authSwitchText">Don't have an account?</span>
+      <button id="authSwitchBtn" type="button">Sign Up</button>
+    </p>
+  </div>
+
+  <!-- ===== MY ORDERS MODAL ===== -->
+  <div id="myOrdersOverlay" class="overlay"></div>
+  <div id="myOrdersModal" class="modal modal-wide">
+    <div class="modal-header">
+      <h3>My Orders</h3>
+      <button id="closeMyOrders" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+    <div id="myOrdersList" class="my-orders-list"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
