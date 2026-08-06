@@ -381,7 +381,9 @@ h1, h2, h3 {
 
 .row-actions {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 180px;
 }
 
 .row-actions button {
@@ -389,8 +391,9 @@ h1, h2, h3 {
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 5px;
-  padding: 5px 10px;
-  font-size: 0.78rem;
+  padding: 5px 9px;
+  font-size: 0.76rem;
+  white-space: nowrap;
 }
 
 .row-actions button:hover {

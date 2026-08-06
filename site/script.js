@@ -32,7 +32,7 @@ const HERO_SLIDES = [
     sub: "Every shirt here is factory overrun — extra units and surplus lots that already exist, sold off before they go to waste. Once a size or print sells out, that exact batch usually isn't coming back.",
     colorA: "#f9f0e2",
     colorB: "#f0d9ae",
-    video: "videos/hero-loop.mp4",
+    video: "/videos/hero-loop.mp4",
   },
   {
     kicker: "Optional Account",
@@ -40,7 +40,7 @@ const HERO_SLIDES = [
     sub: "Check out with just your name, contact number, and how you'll pay — no account required. Prefer to save your details for next time? That's here too, totally optional.",
     colorA: "#eef2e6",
     colorB: "#dbe6c9",
-    image: "images/brooklyn-tee.jpg",
+    image: "/images/brooklyn-tee.jpg",
   },
   {
     kicker: "Live Stock Count",
@@ -48,7 +48,7 @@ const HERO_SLIDES = [
     sub: "The stock count on every card is the same number the owner sees on the ShopTrack dashboard — updated the moment an order comes in.",
     colorA: "#faece0",
     colorB: "#f0cba0",
-    image: "images/toyota-tee.jpg",
+    image: "/images/toyota-tee.jpg",
   },
 ];
 
