@@ -112,7 +112,7 @@
 
         <div class="table-wrap">
           <table id="ordersTable" class="data-table">
-            <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Channel</th><th>Payment</th><th>Status</th><th>Date</th></tr></thead>
+            <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Channel</th><th>Payment</th><th>Status</th><th>Date</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -140,9 +140,16 @@
         <label>Retail Price (₱) <input type="number" id="pPrice" min="0" step="1" required /></label>
       </div>
       <label>Quantity on hand <input type="number" id="pStock" min="0" step="1" required /></label>
-      <label>Photo <span class="opt">(optional)</span>
-        <input type="text" id="pImageUrl" placeholder="images/newyork-tee.jpg or a full https:// URL" />
-      </label>
+
+      <label>Photo <span class="opt">(optional)</span></label>
+      <div id="pImagePreviewWrap" class="image-preview-wrap hidden">
+        <img id="pImagePreview" class="image-preview" alt="Preview" />
+      </div>
+      <input type="file" id="pImageFile" accept="image/*" />
+      <p class="opt image-upload-hint">Uploads straight to storage — or paste a link below instead.</p>
+      <input type="text" id="pImageUrl" placeholder="images/newyork-tee.jpg or a full https:// URL" />
+      <p id="imageUploadStatus" class="opt"></p>
+
       <p id="productError" class="form-error"></p>
       <button type="submit" class="btn btn-primary btn-full">Save Item</button>
     </form>
@@ -164,6 +171,23 @@
     </form>
   </div>
 
+  <!-- DEDUCT STOCK MODAL -->
+  <div id="deductOverlay" class="overlay"></div>
+  <div id="deductModal" class="modal">
+    <div class="modal-header">
+      <h3>Remove Stock</h3>
+      <button id="closeDeductModal" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+    <form id="deductForm" class="stack-form">
+      <input type="hidden" id="deductId" />
+      <p id="deductItemInfo" class="restock-info"></p>
+      <p class="opt">For damaged units, corrections, or stock taken out for another reason.</p>
+      <label>Units to remove <input type="number" id="deductQty" min="1" step="1" value="1" required /></label>
+      <p id="deductError" class="form-error"></p>
+      <button type="submit" class="btn btn-primary btn-full">Remove Stock</button>
+    </form>
+  </div>
+
   <!-- WALK-IN MODAL -->
   <div id="walkinOverlay" class="overlay"></div>
   <div id="walkinModal" class="modal">
@@ -180,6 +204,16 @@
       <p id="walkinError" class="form-error"></p>
       <button type="submit" class="btn btn-primary btn-full">Record Sale</button>
     </form>
+  </div>
+
+  <!-- ORDER DETAIL MODAL -->
+  <div id="orderDetailOverlay" class="overlay"></div>
+  <div id="orderDetailModal" class="modal modal-wide">
+    <div class="modal-header">
+      <h3>Order Detail</h3>
+      <button id="closeOrderDetailModal" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+    <div id="orderDetailBody" class="order-detail-body"></div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>

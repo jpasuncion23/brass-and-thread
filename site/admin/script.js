@@ -172,6 +172,7 @@ function renderInventory() {
       <td>
         <div class="row-actions">
           <button data-action="restock" data-id="${p.id}">+ Stock</button>
+          <button data-action="deduct" data-id="${p.id}">− Stock</button>
           <button data-action="edit" data-id="${p.id}">Edit</button>
           <button data-action="delete" data-id="${p.id}" class="danger">Delete</button>
         </div>
@@ -184,6 +185,7 @@ function renderInventory() {
       const id = btn.dataset.id;
       if (btn.dataset.action === "edit") openProductModal(id);
       else if (btn.dataset.action === "restock") openRestockModal(id);
+      else if (btn.dataset.action === "deduct") openDeductModal(id);
       else deleteProduct(id);
     });
   });
@@ -239,6 +241,60 @@ async function handleRestockSubmit(e) {
   loadAll();
 }
 
+/* ---------------------------------------------------------------------
+   Deduct stock — the mirror of Restock, for damaged units, corrections,
+   or stock pulled out for any reason other than a sale.
+   --------------------------------------------------------------------- */
+function openDeductModal(id) {
+  const product = PRODUCTS.find((p) => p.id === id);
+  if (!product) return;
+
+  document.getElementById("deductForm").reset();
+  document.getElementById("deductError").textContent = "";
+  document.getElementById("deductId").value = id;
+  document.getElementById("deductItemInfo").textContent =
+    `${product.name} (${product.size}/${product.color}) — currently ${product.stock} in stock.`;
+  document.getElementById("deductQty").value = 1;
+  document.getElementById("deductQty").max = product.stock;
+
+  document.getElementById("deductModal").classList.add("show");
+  document.getElementById("deductOverlay").classList.add("show");
+}
+
+function closeDeductModal() {
+  document.getElementById("deductModal").classList.remove("show");
+  document.getElementById("deductOverlay").classList.remove("show");
+}
+
+async function handleDeductSubmit(e) {
+  e.preventDefault();
+  const id = document.getElementById("deductId").value;
+  const qty = Number(document.getElementById("deductQty").value);
+  const errorEl = document.getElementById("deductError");
+
+  const product = PRODUCTS.find((p) => p.id === id);
+  if (!product) return;
+
+  if (!qty || qty < 1) {
+    errorEl.textContent = "Enter how many units to remove.";
+    return;
+  }
+  if (qty > product.stock) {
+    errorEl.textContent = `Only ${product.stock} in stock — can't remove more than that.`;
+    return;
+  }
+
+  const { error } = await sb.from("products").update({ stock: product.stock - qty }).eq("id", id);
+
+  if (error) {
+    errorEl.textContent = "Couldn't update stock: " + error.message;
+    return;
+  }
+
+  closeDeductModal();
+  loadAll();
+}
+
 function openProductModal(id) {
   const form = document.getElementById("productForm");
   form.reset();
@@ -256,11 +312,14 @@ function openProductModal(id) {
     document.getElementById("pPrice").value = product.price;
     document.getElementById("pStock").value = product.stock;
     document.getElementById("pImageUrl").value = product.image_url || "";
+    showImagePreview(product.image_url);
   } else {
     document.getElementById("productModalTitle").textContent = "Add New Item";
     document.getElementById("productId").value = "";
+    showImagePreview(null);
   }
 
+  document.getElementById("imageUploadStatus").textContent = "";
   document.getElementById("productModal").classList.add("show");
   document.getElementById("productOverlay").classList.add("show");
 }
@@ -268,6 +327,49 @@ function openProductModal(id) {
 function closeProductModal() {
   document.getElementById("productModal").classList.remove("show");
   document.getElementById("productOverlay").classList.remove("show");
+}
+
+function showImagePreview(url) {
+  const wrap = document.getElementById("pImagePreviewWrap");
+  const img = document.getElementById("pImagePreview");
+  if (url) {
+    img.src = url;
+    wrap.classList.remove("hidden");
+  } else {
+    img.src = "";
+    wrap.classList.add("hidden");
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Image upload — sends the file straight to Supabase Storage
+   (bucket "product-images", see supabase-schema-storage.sql) and drops
+   the resulting public URL into the same field Save Item reads from.
+   --------------------------------------------------------------------- */
+async function handleImageFileChange(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const statusEl = document.getElementById("imageUploadStatus");
+  statusEl.textContent = "Uploading…";
+
+  const ext = file.name.split(".").pop();
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+  const { error: uploadError } = await sb.storage.from("product-images").upload(path, file, {
+    cacheControl: "3600",
+    upsert: false,
+  });
+
+  if (uploadError) {
+    statusEl.textContent = "Upload failed: " + uploadError.message;
+    return;
+  }
+
+  const { data } = sb.storage.from("product-images").getPublicUrl(path);
+  document.getElementById("pImageUrl").value = data.publicUrl;
+  showImagePreview(data.publicUrl);
+  statusEl.textContent = "Uploaded ✓";
 }
 
 async function handleProductSubmit(e) {
@@ -336,7 +438,7 @@ function renderOrders() {
   const body = document.querySelector("#ordersTable tbody");
 
   if (ORDERS.length === 0) {
-    body.innerHTML = `<tr class="empty-row"><td colspan="8">No orders yet.</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="9">No orders yet.</td></tr>`;
     return;
   }
 
@@ -352,14 +454,86 @@ function renderOrders() {
         <td>${o.payment_method}</td>
         <td>${statusBadge(o)}</td>
         <td>${formatDate(o.created_at)}</td>
+        <td><button data-view-order="${o.id}">View</button></td>
       </tr>`;
   }).join("");
 
   attachStatusToggles();
+
+  document.querySelectorAll("[data-view-order]").forEach((btn) => {
+    btn.addEventListener("click", () => openOrderDetail(btn.dataset.viewOrder));
+  });
+}
+
+/* ---------------------------------------------------------------------
+   Order detail — full customer info so it's always traceable who
+   placed an order and how to reach them (name, contact, email,
+   address, notes), not just the summary shown in the table.
+   --------------------------------------------------------------------- */
+function openOrderDetail(id) {
+  const order = ORDERS.find((o) => o.id === id);
+  if (!order) return;
+
+  const itemsHtml = order.items
+    .map((it) => `<div class="row"><span>${it.name} (${it.size}/${it.color}) × ${it.qty}</span><span>${peso(it.price * it.qty)}</span></div>`)
+    .join("");
+
+  document.getElementById("orderDetailBody").innerHTML = `
+    <div class="order-detail-top">
+      <span class="mono">${order.order_code}</span>
+      ${channelBadge(order.channel)}
+      ${statusBadge(order)}
+    </div>
+
+    <div class="order-detail-grid">
+      <div>
+        <p class="opt">Full name</p>
+        <p>${order.full_name}</p>
+      </div>
+      <div>
+        <p class="opt">Contact number</p>
+        <p>${order.contact_number || "—"}</p>
+      </div>
+      <div>
+        <p class="opt">Email</p>
+        <p>${order.email || "—"}</p>
+      </div>
+      <div>
+        <p class="opt">Payment method</p>
+        <p>${order.payment_method}</p>
+      </div>
+      <div class="span-2">
+        <p class="opt">Delivery address</p>
+        <p>${order.address || "—"}</p>
+      </div>
+      <div class="span-2">
+        <p class="opt">Order notes</p>
+        <p>${order.order_notes || "—"}</p>
+      </div>
+    </div>
+
+    <div class="order-summary">
+      ${itemsHtml}
+      <div class="row total"><span>Total</span><span>${peso(order.total)}</span></div>
+    </div>
+
+    <p class="opt">Placed ${formatDate(order.created_at)}</p>
+  `;
+
+  attachStatusToggles();
+  document.getElementById("orderDetailModal").classList.add("show");
+  document.getElementById("orderDetailOverlay").classList.add("show");
+}
+
+function closeOrderDetail() {
+  document.getElementById("orderDetailModal").classList.remove("show");
+  document.getElementById("orderDetailOverlay").classList.remove("show");
 }
 
 function attachStatusToggles() {
   document.querySelectorAll("[data-toggle-status]").forEach((el) => {
+    if (el.dataset.bound) return; // avoid double-binding across re-renders
+    el.dataset.bound = "1";
     el.addEventListener("click", async () => {
       const { error } = await sb.from("orders").update({ payment_status: "Paid" }).eq("id", el.dataset.toggleStatus);
       if (error) {
@@ -458,13 +632,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("closeProductModal").addEventListener("click", closeProductModal);
   document.getElementById("productOverlay").addEventListener("click", closeProductModal);
   document.getElementById("productForm").addEventListener("submit", handleProductSubmit);
+  document.getElementById("pImageFile").addEventListener("change", handleImageFileChange);
+  document.getElementById("pImageUrl").addEventListener("input", (e) => showImagePreview(e.target.value.trim() || null));
 
   document.getElementById("closeRestockModal").addEventListener("click", closeRestockModal);
   document.getElementById("restockOverlay").addEventListener("click", closeRestockModal);
   document.getElementById("restockForm").addEventListener("submit", handleRestockSubmit);
 
+  document.getElementById("closeDeductModal").addEventListener("click", closeDeductModal);
+  document.getElementById("deductOverlay").addEventListener("click", closeDeductModal);
+  document.getElementById("deductForm").addEventListener("submit", handleDeductSubmit);
+
   document.getElementById("addWalkinBtn").addEventListener("click", openWalkinModal);
   document.getElementById("closeWalkinModal").addEventListener("click", closeWalkinModal);
   document.getElementById("walkinOverlay").addEventListener("click", closeWalkinModal);
   document.getElementById("walkinForm").addEventListener("submit", handleWalkinSubmit);
+
+  document.getElementById("closeOrderDetailModal").addEventListener("click", closeOrderDetail);
+  document.getElementById("orderDetailOverlay").addEventListener("click", closeOrderDetail);
 });
