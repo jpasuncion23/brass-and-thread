@@ -167,6 +167,7 @@ function renderInventory() {
       <td>${stockBadge(p.stock)}</td>
       <td>
         <div class="row-actions">
+          <button data-action="restock" data-id="${p.id}">+ Stock</button>
           <button data-action="edit" data-id="${p.id}">Edit</button>
           <button data-action="delete" data-id="${p.id}" class="danger">Delete</button>
         </div>
@@ -178,9 +179,60 @@ function renderInventory() {
     btn.addEventListener("click", () => {
       const id = btn.dataset.id;
       if (btn.dataset.action === "edit") openProductModal(id);
+      else if (btn.dataset.action === "restock") openRestockModal(id);
       else deleteProduct(id);
     });
   });
+}
+
+/* ---------------------------------------------------------------------
+   Restock — quick "+N units" instead of retyping the whole new total
+   via Edit. Same effect as Edit, just a friendlier action for the most
+   common admin task (a new overrun batch of the same item arrives).
+   --------------------------------------------------------------------- */
+function openRestockModal(id) {
+  const product = PRODUCTS.find((p) => p.id === id);
+  if (!product) return;
+
+  document.getElementById("restockForm").reset();
+  document.getElementById("restockError").textContent = "";
+  document.getElementById("restockId").value = id;
+  document.getElementById("restockItemInfo").textContent =
+    `${product.name} (${product.size}/${product.color}) — currently ${product.stock} in stock.`;
+  document.getElementById("restockQty").value = 1;
+
+  document.getElementById("restockModal").classList.add("show");
+  document.getElementById("restockOverlay").classList.add("show");
+}
+
+function closeRestockModal() {
+  document.getElementById("restockModal").classList.remove("show");
+  document.getElementById("restockOverlay").classList.remove("show");
+}
+
+async function handleRestockSubmit(e) {
+  e.preventDefault();
+  const id = document.getElementById("restockId").value;
+  const qty = Number(document.getElementById("restockQty").value);
+  const errorEl = document.getElementById("restockError");
+
+  const product = PRODUCTS.find((p) => p.id === id);
+  if (!product) return;
+
+  if (!qty || qty < 1) {
+    errorEl.textContent = "Enter how many units to add.";
+    return;
+  }
+
+  const { error } = await sb.from("products").update({ stock: product.stock + qty }).eq("id", id);
+
+  if (error) {
+    errorEl.textContent = "Couldn't restock: " + error.message;
+    return;
+  }
+
+  closeRestockModal();
+  loadAll();
 }
 
 function openProductModal(id) {
@@ -402,6 +454,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("closeProductModal").addEventListener("click", closeProductModal);
   document.getElementById("productOverlay").addEventListener("click", closeProductModal);
   document.getElementById("productForm").addEventListener("submit", handleProductSubmit);
+
+  document.getElementById("closeRestockModal").addEventListener("click", closeRestockModal);
+  document.getElementById("restockOverlay").addEventListener("click", closeRestockModal);
+  document.getElementById("restockForm").addEventListener("submit", handleRestockSubmit);
 
   document.getElementById("addWalkinBtn").addEventListener("click", openWalkinModal);
   document.getElementById("closeWalkinModal").addEventListener("click", closeWalkinModal);

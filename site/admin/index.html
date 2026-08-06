@@ -148,6 +148,22 @@
     </form>
   </div>
 
+  <!-- RESTOCK MODAL -->
+  <div id="restockOverlay" class="overlay"></div>
+  <div id="restockModal" class="modal">
+    <div class="modal-header">
+      <h3>Restock Item</h3>
+      <button id="closeRestockModal" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+    <form id="restockForm" class="stack-form">
+      <input type="hidden" id="restockId" />
+      <p id="restockItemInfo" class="restock-info"></p>
+      <label>Units to add <input type="number" id="restockQty" min="1" step="1" value="1" required /></label>
+      <p id="restockError" class="form-error"></p>
+      <button type="submit" class="btn btn-primary btn-full">Add Stock</button>
+    </form>
+  </div>
+
   <!-- WALK-IN MODAL -->
   <div id="walkinOverlay" class="overlay"></div>
   <div id="walkinModal" class="modal">

@@ -493,6 +493,15 @@ h1, h2, h3 {
   font-weight: 400;
 }
 
+.restock-info {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 0.86rem;
+  color: var(--text-dim);
+}
+
 @media (max-width: 760px) {
   .admin-app {
     flex-direction: column;
