@@ -51,7 +51,11 @@ async function handleLogin(e) {
 }
 
 async function handleLogout() {
-  await sb.auth.signOut();
+  try {
+    await sb.auth.signOut();
+  } catch (err) {
+    console.error("Sign out error:", err);
+  }
   showLogin();
 }
 

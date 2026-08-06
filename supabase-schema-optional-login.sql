@@ -23,7 +23,7 @@ create table if not exists admins (
 );
 
 insert into admins (user_id)
-select id from auth.users where email = 'PASTE-YOUR-ADMIN-EMAIL-HERE'
+select id from auth.users where email = 'jpasuncion.laca@gmail.com'
 on conflict (user_id) do nothing;
 
 -- ===== Orders: optional link to a customer account =====
