@@ -440,6 +440,25 @@ function statusBadge(order) {
   return `<span class="badge pending" data-toggle-status="${order.id}" title="Click to mark Paid">Pending</span>`;
 }
 
+function orderRowHtml(o) {
+  const itemsSummary = o.items.map((it) => `${it.name} (${it.size}/${it.color}) ×${it.qty}`).join("<br>");
+  return `
+    <tr>
+      <td class="mono">${o.order_code}</td>
+      <td>${o.full_name}<br><span class="opt">${o.contact_number || ""}</span></td>
+      <td>${itemsSummary}</td>
+      <td class="mono">${peso(o.total)}</td>
+      <td>${o.payment_method}<br>${statusBadge(o)}</td>
+      <td>${fulfillmentSelect(o)}</td>
+      <td>${formatDate(o.created_at)}</td>
+      <td><button data-view-order="${o.id}">View</button></td>
+    </tr>`;
+}
+
+// Still-open orders needing admin action; completed ones (Delivered /
+// Cancelled) are done and just kept for reference.
+const ACTIVE_STATUSES = ["Pending", "Processing", "Out for Delivery"];
+
 function renderOrders() {
   const body = document.querySelector("#ordersTable tbody");
 
@@ -448,20 +467,23 @@ function renderOrders() {
     return;
   }
 
-  body.innerHTML = ORDERS.map((o) => {
-    const itemsSummary = o.items.map((it) => `${it.name} (${it.size}/${it.color}) ×${it.qty}`).join("<br>");
-    return `
-      <tr>
-        <td class="mono">${o.order_code}</td>
-        <td>${o.full_name}<br><span class="opt">${o.contact_number || ""}</span></td>
-        <td>${itemsSummary}</td>
-        <td class="mono">${peso(o.total)}</td>
-        <td>${o.payment_method}<br>${statusBadge(o)}</td>
-        <td>${fulfillmentSelect(o)}</td>
-        <td>${formatDate(o.created_at)}</td>
-        <td><button data-view-order="${o.id}">View</button></td>
-      </tr>`;
-  }).join("");
+  // Active queue: first come, first served — the earliest unhandled
+  // order sits on top so the admin naturally works down the list in the
+  // order customers actually placed them.
+  const active = ORDERS.filter((o) => ACTIVE_STATUSES.includes(o.order_status || "Pending"))
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  // Completed orders: just a record now, most recently finished on top.
+  const completed = ORDERS.filter((o) => !ACTIVE_STATUSES.includes(o.order_status || "Pending"))
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  const activeRows = active.map(orderRowHtml).join("");
+  const divider = completed.length
+    ? `<tr class="section-divider-row"><td colspan="8">Completed (Delivered / Cancelled)</td></tr>`
+    : "";
+  const completedRows = completed.map(orderRowHtml).join("");
+
+  body.innerHTML = (activeRows || `<tr class="empty-row"><td colspan="8">No active orders — all caught up.</td></tr>`) + divider + completedRows;
 
   attachStatusToggles();
   attachFulfillmentSelects();
@@ -472,20 +494,22 @@ function renderOrders() {
 }
 
 /* ---------------------------------------------------------------------
-   Fulfillment status — the shipping-stage tracking (Processing → Out
-   for Delivery → Delivered, or Cancelled), separate from whether the
-   order has been paid.
+   Fulfillment status — the shipping-stage tracking (Pending → Processing
+   → Out for Delivery → Delivered, or Cancelled), separate from whether
+   the order has been paid. New orders start at "Pending" — the admin's
+   signal that it hasn't been looked at yet — and move to "Processing"
+   once work on it actually begins.
    --------------------------------------------------------------------- */
-const ORDER_STATUSES = ["Processing", "Out for Delivery", "Delivered", "Cancelled"];
+const ORDER_STATUSES = ["Pending", "Processing", "Out for Delivery", "Delivered", "Cancelled"];
 
 function fulfillmentBadge(status) {
-  status = status || "Processing"; // falls back gracefully if the column isn't there yet
+  status = status || "Pending"; // falls back gracefully if the column isn't there yet
   const cls = "fulfillment-" + status.replace(/\s+/g, "-").toLowerCase();
   return `<span class="badge ${cls}">${status}</span>`;
 }
 
 function fulfillmentSelect(order) {
-  const current = order.order_status || "Processing";
+  const current = order.order_status || "Pending";
   const options = ORDER_STATUSES.map(
     (s) => `<option value="${s}" ${s === current ? "selected" : ""}>${s}</option>`
   ).join("");

@@ -578,7 +578,7 @@ function orderTrackerHtml(status) {
     return `<div class="order-tracker cancelled"><span class="tracker-cancelled-label">✕ Order Cancelled</span></div>`;
   }
 
-  const stages = ["Processing", "Out for Delivery", "Delivered"];
+  const stages = ["Pending", "Processing", "Out for Delivery", "Delivered"];
   const currentIndex = Math.max(stages.indexOf(status), 0);
 
   const steps = stages

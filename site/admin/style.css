@@ -353,6 +353,18 @@ h1, h2, h3 {
   padding: 28px;
 }
 
+/* Label row splitting the active queue from completed orders below it. */
+.section-divider-row td {
+  text-align: left;
+  color: var(--text-dim);
+  background: var(--bg-soft);
+  font-family: "Special Elite", monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 16px;
+}
+
 .mono {
   font-family: "IBM Plex Mono", monospace;
 }
@@ -404,11 +416,15 @@ h1, h2, h3 {
   cursor: pointer;
 }
 
+/* Pending gets the boldest treatment on purpose — it's a new order the
+   admin hasn't looked at yet, so it should be the hardest to miss. */
+.fulfillment-select.fulfillment-pending { border-color: var(--stamp); background: rgba(193, 67, 42, 0.1); color: var(--stamp-dark); font-weight: 700; }
 .fulfillment-select.fulfillment-processing { border-color: rgba(209, 161, 60, 0.5); color: var(--warn); }
 .fulfillment-select.fulfillment-out-for-delivery { border-color: rgba(74, 108, 111, 0.5); color: #4a6c6f; }
 .fulfillment-select.fulfillment-delivered { border-color: rgba(79, 122, 99, 0.5); color: var(--ok); }
 .fulfillment-select.fulfillment-cancelled { border-color: rgba(193, 67, 42, 0.5); color: var(--stamp); }
 
+.badge.fulfillment-pending { background: var(--stamp); color: #fffcf5; font-weight: 700; }
 .badge.fulfillment-processing { background: rgba(209, 161, 60, 0.2); color: var(--warn); }
 .badge.fulfillment-out-for-delivery { background: rgba(74, 108, 111, 0.15); color: #4a6c6f; }
 .badge.fulfillment-delivered { background: rgba(79, 122, 99, 0.18); color: var(--ok); }
