@@ -470,15 +470,17 @@ function renderOrders() {
 const ORDER_STATUSES = ["Processing", "Out for Delivery", "Delivered", "Cancelled"];
 
 function fulfillmentBadge(status) {
+  status = status || "Processing"; // falls back gracefully if the column isn't there yet
   const cls = "fulfillment-" + status.replace(/\s+/g, "-").toLowerCase();
   return `<span class="badge ${cls}">${status}</span>`;
 }
 
 function fulfillmentSelect(order) {
+  const current = order.order_status || "Processing";
   const options = ORDER_STATUSES.map(
-    (s) => `<option value="${s}" ${s === order.order_status ? "selected" : ""}>${s}</option>`
+    (s) => `<option value="${s}" ${s === current ? "selected" : ""}>${s}</option>`
   ).join("");
-  return `<select class="fulfillment-select fulfillment-${order.order_status.replace(/\s+/g, "-").toLowerCase()}" data-order-id="${order.id}">${options}</select>`;
+  return `<select class="fulfillment-select fulfillment-${current.replace(/\s+/g, "-").toLowerCase()}" data-order-id="${order.id}">${options}</select>`;
 }
 
 function attachFulfillmentSelects() {
