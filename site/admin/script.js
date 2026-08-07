@@ -129,9 +129,9 @@ function renderDashboard() {
       <tr>
         <td class="mono">${o.order_code}</td>
         <td>${o.full_name}</td>
-        <td>${channelBadge(o.channel)}</td>
         <td class="mono">${peso(o.total)}</td>
         <td>${statusBadge(o)}</td>
+        <td>${fulfillmentBadge(o.order_status)}</td>
         <td>${formatDate(o.created_at)}</td>
       </tr>`
         )
@@ -425,9 +425,6 @@ async function deleteProduct(id) {
 /* ---------------------------------------------------------------------
    Orders
    --------------------------------------------------------------------- */
-function channelBadge(channel) {
-  return channel === "online" ? `<span class="badge online">Online</span>` : `<span class="badge walkin">Walk-in</span>`;
-}
 function statusBadge(order) {
   return order.payment_status === "Paid"
     ? `<span class="badge paid">Paid</span>`
@@ -438,7 +435,7 @@ function renderOrders() {
   const body = document.querySelector("#ordersTable tbody");
 
   if (ORDERS.length === 0) {
-    body.innerHTML = `<tr class="empty-row"><td colspan="9">No orders yet.</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="8">No orders yet.</td></tr>`;
     return;
   }
 
@@ -450,9 +447,8 @@ function renderOrders() {
         <td>${o.full_name}<br><span class="opt">${o.contact_number || ""}</span></td>
         <td>${itemsSummary}</td>
         <td class="mono">${peso(o.total)}</td>
-        <td>${channelBadge(o.channel)}</td>
-        <td>${o.payment_method}</td>
-        <td>${statusBadge(o)}${fulfillmentSelect(o)}</td>
+        <td>${o.payment_method}<br>${statusBadge(o)}</td>
+        <td>${fulfillmentSelect(o)}</td>
         <td>${formatDate(o.created_at)}</td>
         <td><button data-view-order="${o.id}">View</button></td>
       </tr>`;
@@ -472,6 +468,11 @@ function renderOrders() {
    order has been paid.
    --------------------------------------------------------------------- */
 const ORDER_STATUSES = ["Processing", "Out for Delivery", "Delivered", "Cancelled"];
+
+function fulfillmentBadge(status) {
+  const cls = "fulfillment-" + status.replace(/\s+/g, "-").toLowerCase();
+  return `<span class="badge ${cls}">${status}</span>`;
+}
 
 function fulfillmentSelect(order) {
   const options = ORDER_STATUSES.map(
@@ -512,7 +513,6 @@ function openOrderDetail(id) {
   document.getElementById("orderDetailBody").innerHTML = `
     <div class="order-detail-top">
       <span class="mono">${order.order_code}</span>
-      ${channelBadge(order.channel)}
       ${statusBadge(order)}
     </div>
 
@@ -582,56 +582,6 @@ function attachStatusToggles() {
 }
 
 /* ---------------------------------------------------------------------
-   Walk-in sale
-   --------------------------------------------------------------------- */
-function populateWalkinProductSelect() {
-  const select = document.getElementById("wProduct");
-  const inStock = PRODUCTS.filter((p) => p.stock > 0);
-  select.innerHTML = inStock.length
-    ? inStock.map((p) => `<option value="${p.id}">${p.name} (${p.size}/${p.color}) — ${p.stock} in stock</option>`).join("")
-    : `<option value="" disabled selected>No items available</option>`;
-}
-
-function openWalkinModal() {
-  document.getElementById("walkinForm").reset();
-  document.getElementById("walkinError").textContent = "";
-  populateWalkinProductSelect();
-  document.getElementById("walkinModal").classList.add("show");
-  document.getElementById("walkinOverlay").classList.add("show");
-}
-function closeWalkinModal() {
-  document.getElementById("walkinModal").classList.remove("show");
-  document.getElementById("walkinOverlay").classList.remove("show");
-}
-
-async function handleWalkinSubmit(e) {
-  e.preventDefault();
-  const productId = document.getElementById("wProduct").value;
-  const qty = Number(document.getElementById("wQty").value);
-  const customerName = document.getElementById("wCustomer").value.trim() || "Walk-in customer";
-  const errorEl = document.getElementById("walkinError");
-
-  if (!productId) {
-    errorEl.textContent = "Please select an item.";
-    return;
-  }
-
-  const { error } = await sb.rpc("record_walkin_sale", {
-    p_product_id: productId,
-    p_qty: qty,
-    p_customer_name: customerName,
-  });
-
-  if (error) {
-    errorEl.textContent = "Couldn't record sale: " + error.message;
-    return;
-  }
-
-  closeWalkinModal();
-  loadAll();
-}
-
-/* ---------------------------------------------------------------------
    Realtime — auto-refresh when the storefront (or another admin tab)
    changes products/orders, no manual reload needed.
    --------------------------------------------------------------------- */
@@ -678,11 +628,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("closeDeductModal").addEventListener("click", closeDeductModal);
   document.getElementById("deductOverlay").addEventListener("click", closeDeductModal);
   document.getElementById("deductForm").addEventListener("submit", handleDeductSubmit);
-
-  document.getElementById("addWalkinBtn").addEventListener("click", openWalkinModal);
-  document.getElementById("closeWalkinModal").addEventListener("click", closeWalkinModal);
-  document.getElementById("walkinOverlay").addEventListener("click", closeWalkinModal);
-  document.getElementById("walkinForm").addEventListener("submit", handleWalkinSubmit);
 
   document.getElementById("closeOrderDetailModal").addEventListener("click", closeOrderDetail);
   document.getElementById("orderDetailOverlay").addEventListener("click", closeOrderDetail);

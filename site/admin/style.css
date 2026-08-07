@@ -387,8 +387,6 @@ h1, h2, h3 {
 .badge.out { background: rgba(110, 97, 82, 0.3); color: var(--text-dim); }
 .badge.paid { background: rgba(79, 122, 99, 0.18); color: var(--ok); }
 .badge.pending { background: rgba(209, 161, 60, 0.2); color: var(--warn); cursor: pointer; }
-.badge.online { background: rgba(43, 32, 24, 0.08); color: var(--text); }
-.badge.walkin { background: rgba(193, 67, 42, 0.15); color: var(--stamp); }
 
 .fulfillment-select {
   display: block;
@@ -408,6 +406,11 @@ h1, h2, h3 {
 .fulfillment-select.fulfillment-out-for-delivery { border-color: rgba(74, 108, 111, 0.5); color: #4a6c6f; }
 .fulfillment-select.fulfillment-delivered { border-color: rgba(79, 122, 99, 0.5); color: var(--ok); }
 .fulfillment-select.fulfillment-cancelled { border-color: rgba(193, 67, 42, 0.5); color: var(--stamp); }
+
+.badge.fulfillment-processing { background: rgba(209, 161, 60, 0.2); color: var(--warn); }
+.badge.fulfillment-out-for-delivery { background: rgba(74, 108, 111, 0.15); color: #4a6c6f; }
+.badge.fulfillment-delivered { background: rgba(79, 122, 99, 0.18); color: var(--ok); }
+.badge.fulfillment-cancelled { background: rgba(193, 67, 42, 0.15); color: var(--stamp); }
 
 .row-actions {
   display: flex;

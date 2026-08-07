@@ -74,7 +74,7 @@
           <h3>Recent Orders</h3>
           <div class="table-wrap">
             <table id="recentOrdersTable" class="data-table">
-              <thead><tr><th>Order</th><th>Customer</th><th>Channel</th><th>Total</th><th>Status</th><th>Date</th></tr></thead>
+              <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th><th>Fulfillment</th><th>Date</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -106,14 +106,13 @@
           <div>
             <p class="kicker">Sales</p>
             <h2>Orders</h2>
-            <p class="panel-sub">Online orders from the storefront + walk-in sales.</p>
+            <p class="panel-sub">Orders placed on the storefront — process each one below.</p>
           </div>
-          <button id="addWalkinBtn" class="btn btn-primary">+ Add Walk-in Sale</button>
         </div>
 
         <div class="table-wrap">
           <table id="ordersTable" class="data-table">
-            <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Channel</th><th>Payment</th><th>Fulfillment</th><th>Date</th><th></th></tr></thead>
+            <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Fulfillment</th><th>Date</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -186,24 +185,6 @@
       <label>Units to remove <input type="number" id="deductQty" min="1" step="1" value="1" required /></label>
       <p id="deductError" class="form-error"></p>
       <button type="submit" class="btn btn-primary btn-full">Remove Stock</button>
-    </form>
-  </div>
-
-  <!-- WALK-IN MODAL -->
-  <div id="walkinOverlay" class="overlay"></div>
-  <div id="walkinModal" class="modal">
-    <div class="modal-header">
-      <h3>Add Walk-in Sale</h3>
-      <button id="closeWalkinModal" class="icon-btn" aria-label="Close">✕</button>
-    </div>
-    <form id="walkinForm" class="stack-form">
-      <label>Item <select id="wProduct" required></select></label>
-      <label>Quantity <input type="number" id="wQty" min="1" step="1" value="1" required /></label>
-      <label>Customer name <span class="opt">(optional)</span>
-        <input type="text" id="wCustomer" placeholder="Walk-in customer" />
-      </label>
-      <p id="walkinError" class="form-error"></p>
-      <button type="submit" class="btn btn-primary btn-full">Record Sale</button>
     </form>
   </div>
 
