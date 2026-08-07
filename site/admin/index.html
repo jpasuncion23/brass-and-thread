@@ -110,6 +110,18 @@
           </div>
         </div>
 
+        <div class="orders-toolbar">
+          <input type="text" id="orderSearchInput" placeholder="Search order code, name, contact, or email…" />
+          <select id="orderStatusFilter">
+            <option value="">All statuses</option>
+            <option value="Pending">Pending</option>
+            <option value="Processing">Processing</option>
+            <option value="Out for Delivery">Out for Delivery</option>
+            <option value="Delivered">Delivered</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+        </div>
+
         <div class="table-wrap">
           <table id="ordersTable" class="data-table">
             <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Fulfillment</th><th>Date</th><th></th></tr></thead>

@@ -459,6 +459,23 @@ function orderRowHtml(o) {
 // Cancelled) are done and just kept for reference.
 const ACTIVE_STATUSES = ["Pending", "Processing", "Out for Delivery"];
 
+// Search box + status dropdown above the Orders table — lets the admin
+// quickly find one customer's order instead of scrolling the whole list.
+function getFilteredOrders() {
+  const term = (document.getElementById("orderSearchInput")?.value || "").trim().toLowerCase();
+  const statusFilter = document.getElementById("orderStatusFilter")?.value || "";
+
+  return ORDERS.filter((o) => {
+    if (statusFilter && (o.order_status || "Pending") !== statusFilter) return false;
+    if (!term) return true;
+    const haystack = [o.order_code, o.full_name, o.contact_number, o.email]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(term);
+  });
+}
+
 function renderOrders() {
   const body = document.querySelector("#ordersTable tbody");
 
@@ -467,14 +484,21 @@ function renderOrders() {
     return;
   }
 
+  const filtered = getFilteredOrders();
+
+  if (filtered.length === 0) {
+    body.innerHTML = `<tr class="empty-row"><td colspan="8">No orders match your search/filter.</td></tr>`;
+    return;
+  }
+
   // Active queue: first come, first served — the earliest unhandled
   // order sits on top so the admin naturally works down the list in the
   // order customers actually placed them.
-  const active = ORDERS.filter((o) => ACTIVE_STATUSES.includes(o.order_status || "Pending"))
+  const active = filtered.filter((o) => ACTIVE_STATUSES.includes(o.order_status || "Pending"))
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   // Completed orders: just a record now, most recently finished on top.
-  const completed = ORDERS.filter((o) => !ACTIVE_STATUSES.includes(o.order_status || "Pending"))
+  const completed = filtered.filter((o) => !ACTIVE_STATUSES.includes(o.order_status || "Pending"))
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   const activeRows = active.map(orderRowHtml).join("");
@@ -688,4 +712,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   document.getElementById("closeOrderDetailModal").addEventListener("click", closeOrderDetail);
   document.getElementById("orderDetailOverlay").addEventListener("click", closeOrderDetail);
+
+  document.getElementById("orderSearchInput").addEventListener("input", renderOrders);
+  document.getElementById("orderStatusFilter").addEventListener("change", renderOrders);
 });
