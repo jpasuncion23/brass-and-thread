@@ -617,7 +617,6 @@ function closeTrackOrder() {
 
 async function handleTrackOrderSubmit(e) {
   e.preventDefault();
-  const orderCode = document.getElementById("trackOrderCode").value.trim();
   const contact = document.getElementById("trackOrderContact").value.trim();
   const errorEl = document.getElementById("trackOrderError");
   const resultEl = document.getElementById("trackOrderResult");
@@ -625,7 +624,7 @@ async function handleTrackOrderSubmit(e) {
   errorEl.textContent = "";
   resultEl.classList.add("hidden");
 
-  const { data, error } = await sb.rpc("track_order", { p_order_code: orderCode, p_contact: contact });
+  const { data, error } = await sb.rpc("track_order", { p_contact: contact });
 
   if (error) {
     errorEl.textContent = "Something went wrong — please try again.";
@@ -633,28 +632,30 @@ async function handleTrackOrderSubmit(e) {
   }
 
   if (!data || data.length === 0) {
-    errorEl.textContent = "No order found with that code and contact info. Double-check both and try again.";
+    errorEl.textContent = "No orders found for that contact info. Double-check it and try again.";
     return;
   }
 
-  const o = data[0];
-  const items = o.items.map((it) => `${it.name} (${it.size}/${it.color}) ×${it.qty}`).join(", ");
-  const statusClass = o.payment_status === "Paid" ? "ok" : o.payment_status === "Refunded" ? "out" : "low";
-
-  resultEl.innerHTML = `
-    <div class="my-order-card">
-      <div class="my-order-top">
-        <span class="mono">${o.order_code}</span>
-        <span class="stock-pill ${statusClass}">${o.payment_status}</span>
-      </div>
-      <p class="my-order-items">${items}</p>
-      ${orderTrackerHtml(o.order_status)}
-      <div class="my-order-bottom">
-        <span class="mono">${peso(o.total)}</span>
-        <span>${new Date(o.created_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}</span>
-      </div>
-    </div>
-  `;
+  resultEl.innerHTML = data
+    .map((o) => {
+      const items = o.items.map((it) => `${it.name} (${it.size}/${it.color}) ×${it.qty}`).join(", ");
+      const statusClass = o.payment_status === "Paid" ? "ok" : o.payment_status === "Refunded" ? "out" : "low";
+      return `
+        <div class="my-order-card">
+          <div class="my-order-top">
+            <span class="mono">${o.order_code}</span>
+            <span class="stock-pill ${statusClass}">${o.payment_status}</span>
+          </div>
+          <p class="my-order-items">${items}</p>
+          ${orderTrackerHtml(o.order_status)}
+          <div class="my-order-bottom">
+            <span class="mono">${peso(o.total)}</span>
+            <span>${new Date(o.created_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}</span>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
   resultEl.classList.remove("hidden");
 }
 
