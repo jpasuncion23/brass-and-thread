@@ -89,6 +89,24 @@ h1, h2, h3 {
   font-size: 1.05rem;
 }
 
+/* Secondary/outline button — used for CSV export and range picker actions,
+   quieter than the primary red-stamp button so it doesn't compete with it. */
+.btn-outline {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.btn-outline:hover {
+  border-color: var(--stamp);
+  color: var(--stamp);
+}
+
 /* ===== LOGIN ===== */
 .login-screen {
   min-height: 100vh;
@@ -262,6 +280,7 @@ h1, h2, h3 {
 .orders-toolbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
   margin: -12px 0 20px;
 }
@@ -290,6 +309,145 @@ h1, h2, h3 {
 .orders-toolbar select:focus {
   outline: 2px solid var(--stamp);
   outline-offset: 1px;
+}
+
+/* ===== ANALYTICS ===== */
+.analytics-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.granularity-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.granularity-btn {
+  background: none;
+  border: none;
+  padding: 9px 18px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  border-right: 1px solid var(--border);
+}
+
+.granularity-btn:last-child {
+  border-right: none;
+}
+
+.granularity-btn.active {
+  background: var(--stamp);
+  color: var(--tag);
+}
+
+.granularity-btn:hover:not(.active) {
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.date-range-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.date-range-picker label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.date-range-picker input[type="date"] {
+  font-family: "Work Sans", sans-serif;
+  font-size: 0.86rem;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.date-range-picker input[type="date"]:focus {
+  outline: 2px solid var(--stamp);
+  outline-offset: 1px;
+}
+
+.stat-value.trend-up {
+  color: var(--ok);
+}
+
+.stat-value.trend-down {
+  color: var(--stamp);
+}
+
+/* Dependency-free bar chart — plain divs, sized with inline heights set
+   from JS. Track holds the bar and stretches to fill available height;
+   the label sits below at a fixed size so bars stay comparable. */
+.bar-chart {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  height: 260px;
+  padding: 10px 4px 0;
+  overflow-x: auto;
+}
+
+.bar-chart-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 30px;
+  flex-shrink: 0;
+}
+
+.bar-chart-track {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+}
+
+.bar-chart-bar {
+  width: 100%;
+  max-width: 26px;
+  margin: 0 auto;
+  background: var(--stamp);
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  transition: background 0.15s ease;
+}
+
+.bar-chart-col:hover .bar-chart-bar {
+  background: var(--stamp-dark);
+}
+
+.bar-chart-label {
+  margin-top: 6px;
+  font-size: 0.64rem;
+  color: var(--text-dim);
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  max-height: 64px;
+  text-align: right;
+}
+
+.bar-chart-empty {
+  margin: auto;
+  color: var(--text-dim);
+  font-size: 0.86rem;
 }
 
 /* ===== STAT CARDS ===== */
@@ -330,6 +488,11 @@ h1, h2, h3 {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 22px 24px;
+  margin-bottom: 24px;
+}
+
+.panel-block:last-child {
+  margin-bottom: 0;
 }
 
 .panel-block h3 {
@@ -722,5 +885,14 @@ h1, h2, h3 {
   .form-row,
   .order-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .analytics-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .date-range-picker {
+    align-items: flex-start;
   }
 }

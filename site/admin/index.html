@@ -47,6 +47,7 @@
       <div class="sidebar-logo">ShopTrack<span>.</span></div>
       <nav class="sidebar-nav">
         <button class="nav-item active" data-tab="dashboard">Dashboard</button>
+        <button class="nav-item" data-tab="analytics">Analytics</button>
         <button class="nav-item" data-tab="inventory">Inventory</button>
         <button class="nav-item" data-tab="orders">Orders</button>
       </nav>
@@ -75,6 +76,54 @@
           <div class="table-wrap">
             <table id="recentOrdersTable" class="data-table">
               <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th><th>Fulfillment</th><th>Date</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ANALYTICS -->
+      <section id="tab-analytics" class="tab-panel">
+        <div class="panel-header">
+          <div>
+            <p class="kicker">Performance</p>
+            <h2>Analytics</h2>
+            <p class="panel-sub">Income counted from Delivered &amp; Paid orders only.</p>
+          </div>
+          <button id="exportAnalyticsCsv" class="btn btn-primary">Export CSV</button>
+        </div>
+
+        <div class="analytics-controls">
+          <div class="granularity-toggle" id="granularityToggle">
+            <button type="button" data-granularity="daily" class="granularity-btn active">Daily</button>
+            <button type="button" data-granularity="monthly" class="granularity-btn">Monthly</button>
+            <button type="button" data-granularity="yearly" class="granularity-btn">Yearly</button>
+          </div>
+          <div class="date-range-picker">
+            <label>From <input type="date" id="analyticsFrom" /></label>
+            <label>To <input type="date" id="analyticsTo" /></label>
+            <button type="button" id="applyRangeBtn" class="btn-outline">Apply</button>
+            <button type="button" id="clearRangeBtn" class="btn-outline">Reset</button>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-card"><span class="stat-label">Income (Selected Range)</span><span id="analyticsIncome" class="stat-value">₱0</span></div>
+          <div class="stat-card"><span class="stat-label">Orders</span><span id="analyticsOrderCount" class="stat-value">0</span></div>
+          <div class="stat-card"><span class="stat-label">Avg Order Value</span><span id="analyticsAOV" class="stat-value">₱0</span></div>
+          <div class="stat-card"><span class="stat-label">Vs Previous Period</span><span id="analyticsTrend" class="stat-value">—</span></div>
+        </div>
+
+        <div class="panel-block">
+          <h3 id="analyticsChartTitle">Daily Income</h3>
+          <div id="analyticsChart" class="bar-chart"></div>
+        </div>
+
+        <div class="panel-block">
+          <h3>Top Selling Items</h3>
+          <div class="table-wrap">
+            <table id="topProductsTable" class="data-table">
+              <thead><tr><th>Item</th><th>Size / Color</th><th>Units Sold</th><th>Revenue</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -120,6 +169,7 @@
             <option value="Delivered">Delivered</option>
             <option value="Cancelled">Cancelled</option>
           </select>
+          <button type="button" id="exportOrdersCsv" class="btn-outline">Export CSV</button>
         </div>
 
         <div class="table-wrap">
