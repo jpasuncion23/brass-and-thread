@@ -345,6 +345,25 @@
     <div id="trackOrderResult" class="my-orders-list hidden"></div>
   </div>
 
+  <!-- ===== QUICK VIEW MODAL — pick a size before it goes in the cart ===== -->
+  <div id="quickViewOverlay" class="overlay"></div>
+  <div id="quickViewModal" class="modal">
+    <div class="modal-header">
+      <h3 id="qvName"></h3>
+      <button id="closeQuickView" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+
+    <div class="product-photo quick-view-photo" id="qvPhoto"></div>
+    <p class="product-meta" id="qvMeta"></p>
+    <p class="product-price" id="qvPrice"></p>
+
+    <p class="qv-size-label">Size</p>
+    <div class="size-picker" id="qvSizePicker"></div>
+    <p id="qvStockNote" class="qv-stock-note"></p>
+
+    <button id="qvAddToCartBtn" class="btn btn-primary btn-full">Add to Cart</button>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="config.js"></script>
   <script src="script.js"></script>

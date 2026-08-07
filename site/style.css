@@ -638,6 +638,72 @@ button {
   text-align: center;
 }
 
+.product-card.clickable {
+  cursor: pointer;
+}
+
+.product-card.clickable:hover {
+  box-shadow: 0 14px 30px rgba(43, 32, 24, 0.16);
+}
+
+/* ===== QUICK VIEW — size picker inside the product modal ===== */
+.quick-view-photo {
+  margin: 0 -26px 16px;
+  aspect-ratio: 4 / 5;
+}
+
+.qv-size-label {
+  font-family: "Special Elite", monospace;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+  margin-top: 16px;
+}
+
+.size-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.size-pill {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.size-pill:hover:not(:disabled) {
+  border-color: var(--stamp);
+}
+
+.size-pill.selected {
+  background: var(--stamp);
+  border-color: var(--stamp);
+  color: var(--tag);
+}
+
+.size-pill:disabled {
+  background: var(--bg-soft);
+  color: var(--sold);
+  border-color: var(--border);
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+
+.qv-stock-note {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-bottom: 18px;
+}
+
 /* ===== HOW IT WORKS ===== */
 .how-section {
   max-width: 1180px;

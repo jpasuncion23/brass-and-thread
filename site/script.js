@@ -155,39 +155,168 @@ async function loadProducts() {
   loadState.classList.add("hidden");
   renderProducts();
   renderCart(); // in case stock changed under an item already in cart
+
+  // Quick View might be open when a realtime stock update comes in —
+  // keep its size picker honest instead of showing stale numbers.
+  if (quickViewGroup && document.getElementById("quickViewModal").classList.contains("show")) {
+    const fresh = groupProducts().find((g) => g.key === quickViewGroup.key);
+    if (fresh) {
+      quickViewGroup = fresh;
+      renderQuickViewSizes();
+    } else {
+      closeQuickView();
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Grouping — each size of the same shirt/color is its own row in the
+   products table (own stock, own id), but customers shouldn't have to
+   hunt through separate cards for "Graphic Tee, Black, S" vs "...M" vs
+   "...L". One card per name+color; sizes are chosen in the Quick View
+   modal (see openQuickView below).
+   --------------------------------------------------------------------- */
+const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+
+function sortSizes(sizes) {
+  return sizes.sort((a, b) => {
+    const ai = SIZE_ORDER.indexOf(a.size.toUpperCase());
+    const bi = SIZE_ORDER.indexOf(b.size.toUpperCase());
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.size.localeCompare(b.size);
+  });
+}
+
+function groupProducts() {
+  const groups = new Map();
+
+  PRODUCTS.forEach((p) => {
+    const key = p.name + "||" + p.color;
+    if (!groups.has(key)) {
+      groups.set(key, { key, name: p.name, color: p.color, image_url: null, sizes: [] });
+    }
+    const g = groups.get(key);
+    g.sizes.push(p);
+    if (!g.image_url && p.image_url) g.image_url = p.image_url;
+  });
+
+  return Array.from(groups.values()).map((g) => {
+    sortSizes(g.sizes);
+    const totalStock = g.sizes.reduce((sum, s) => sum + s.stock, 0);
+    return { ...g, totalStock, soldOut: totalStock <= 0, price: g.sizes[0].price };
+  });
 }
 
 function renderProducts() {
   const grid = document.getElementById("productGrid");
   grid.innerHTML = "";
 
-  PRODUCTS.forEach((p) => {
-    const soldOut = p.stock <= 0;
-    const low = !soldOut && p.stock <= LOW_STOCK_THRESHOLD;
-    const pillClass = soldOut ? "out" : low ? "low" : "";
-    const pillText = soldOut ? "Sold Out" : `${p.stock} left`;
+  groupProducts().forEach((g) => {
+    const low = !g.soldOut && g.totalStock <= LOW_STOCK_THRESHOLD;
+    const pillClass = g.soldOut ? "out" : low ? "low" : "";
+    const pillText = g.soldOut ? "Sold Out" : `${g.totalStock} left`;
+    const sizeCount = g.sizes.length;
 
     const card = document.createElement("div");
-    card.className = "product-card";
+    card.className = "product-card" + (g.soldOut ? "" : " clickable");
     card.innerHTML = `
       <div class="product-photo">
-        ${p.image_url ? `<img src="${p.image_url}" alt="${p.name}" loading="lazy" />` : `<span class="product-photo-placeholder">👕</span>`}
+        ${g.image_url ? `<img src="${g.image_url}" alt="${g.name}" loading="lazy" />` : `<span class="product-photo-placeholder">👕</span>`}
       </div>
       <span class="stock-pill ${pillClass}">${pillText}</span>
-      <h3>${p.name}</h3>
+      <h3>${g.name}</h3>
       <div class="tag-divider"></div>
-      <p class="product-meta">Size ${p.size} · ${p.color}</p>
-      <p class="product-price">${peso(p.price)}</p>
-      <button class="btn btn-primary add-to-cart-btn" data-id="${p.id}" ${soldOut ? "disabled" : ""}>
-        ${soldOut ? "Sold Out" : "Add to Cart"}
+      <p class="product-meta">${g.color} · ${sizeCount} size${sizeCount > 1 ? "s" : ""}</p>
+      <p class="product-price">${peso(g.price)}</p>
+      <button class="btn btn-primary choose-size-btn" ${g.soldOut ? "disabled" : ""}>
+        ${g.soldOut ? "Sold Out" : "Choose Size"}
       </button>
     `;
+    if (!g.soldOut) {
+      card.addEventListener("click", () => openQuickView(g.key));
+    }
     grid.appendChild(card);
   });
+}
 
-  grid.querySelectorAll(".add-to-cart-btn").forEach((btn) => {
-    btn.addEventListener("click", () => addToCart(btn.dataset.id));
+/* ---------------------------------------------------------------------
+   Quick View — pick a size (and see that size's own stock) before it
+   actually goes in the cart. Opened by clicking a product card.
+   --------------------------------------------------------------------- */
+let quickViewGroup = null;
+let quickViewSelectedId = null;
+
+function openQuickView(key) {
+  const group = groupProducts().find((g) => g.key === key);
+  if (!group) return;
+
+  quickViewGroup = group;
+  const firstAvailable = group.sizes.find((s) => s.stock > 0) || group.sizes[0];
+  quickViewSelectedId = firstAvailable.id;
+
+  document.getElementById("qvName").textContent = group.name;
+  document.getElementById("qvPhoto").innerHTML = group.image_url
+    ? `<img src="${group.image_url}" alt="${group.name}" />`
+    : `<span class="product-photo-placeholder">👕</span>`;
+  document.getElementById("qvMeta").textContent = group.color;
+  document.getElementById("qvPrice").textContent = peso(group.price);
+
+  renderQuickViewSizes();
+
+  document.getElementById("quickViewModal").classList.add("show");
+  document.getElementById("quickViewOverlay").classList.add("show");
+}
+
+function renderQuickViewSizes() {
+  const picker = document.getElementById("qvSizePicker");
+
+  picker.innerHTML = quickViewGroup.sizes
+    .map((s) => {
+      const soldOut = s.stock <= 0;
+      const selected = s.id === quickViewSelectedId;
+      return `<button type="button" class="size-pill${selected ? " selected" : ""}" data-id="${s.id}" ${soldOut ? "disabled" : ""}>${s.size}</button>`;
+    })
+    .join("");
+
+  picker.querySelectorAll(".size-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      quickViewSelectedId = btn.dataset.id;
+      renderQuickViewSizes();
+    });
   });
+
+  updateQuickViewStockNote();
+}
+
+function updateQuickViewStockNote() {
+  const selected = quickViewGroup.sizes.find((s) => s.id === quickViewSelectedId);
+  const note = document.getElementById("qvStockNote");
+  const addBtn = document.getElementById("qvAddToCartBtn");
+
+  if (!selected || selected.stock <= 0) {
+    note.textContent = "Sold out in this size.";
+    addBtn.disabled = true;
+    return;
+  }
+
+  const low = selected.stock <= LOW_STOCK_THRESHOLD;
+  note.textContent = low ? `Only ${selected.stock} left in this size.` : `${selected.stock} in stock.`;
+  addBtn.disabled = false;
+}
+
+function closeQuickView() {
+  document.getElementById("quickViewModal").classList.remove("show");
+  document.getElementById("quickViewOverlay").classList.remove("show");
+  quickViewGroup = null;
+  quickViewSelectedId = null;
+}
+
+function handleQuickViewAddToCart() {
+  if (!quickViewSelectedId) return;
+  addToCart(quickViewSelectedId);
+  closeQuickView();
 }
 
 function addToCart(productId) {
@@ -823,4 +952,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("closeTrackOrder").addEventListener("click", closeTrackOrder);
   document.getElementById("trackOrderOverlay").addEventListener("click", closeTrackOrder);
   document.getElementById("trackOrderForm").addEventListener("submit", handleTrackOrderSubmit);
+
+  document.getElementById("closeQuickView").addEventListener("click", closeQuickView);
+  document.getElementById("quickViewOverlay").addEventListener("click", closeQuickView);
+  document.getElementById("qvAddToCartBtn").addEventListener("click", handleQuickViewAddToCart);
 });
