@@ -1,18 +1,19 @@
 :root {
-  --bg: #f7efe0;
-  --bg-soft: #efe3c9;
-  --surface: #fffcf5;
-  --tag: #fffcf5;
-  --tag-ink: #2b2018;
-  --text: #2b2018;
-  --text-dim: #7d6e59;
-  --border: rgba(43, 32, 24, 0.14);
-  --stamp: #c1432a;
-  --stamp-dark: #9c3220;
-  --warn: #a8721b;
-  --sold: #9c8f78;
-  --ok: #3f7a5c;
-  --shadow: 0 10px 26px rgba(43, 32, 24, 0.10);
+  --bg: #15120e;
+  --bg-soft: #1c1712;
+  --surface: #1c1712;
+  --tag: #f7f1e2;
+  --tag-ink: #201a12;
+  --text: #f0e6d2;
+  --text-dim: #a4967a;
+  --border: rgba(201, 162, 39, 0.22);
+  --stamp: #c9a227;
+  --stamp-dark: #a3821e;
+  --stamp-ink: #17130e;
+  --warn: #d6a23c;
+  --sold: #6e6353;
+  --ok: #7f9c76;
+  --shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -24,7 +25,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: "Work Sans", Arial, sans-serif;
+  font-family: "Jost", Arial, sans-serif;
   line-height: 1.5;
 }
 
@@ -34,16 +35,17 @@ button {
 }
 
 h1, h2, h3 {
-  font-family: "Anton", Impact, sans-serif;
-  font-weight: 400;
-  letter-spacing: 0.4px;
+  font-family: "Bodoni Moda", Georgia, serif;
+  font-weight: 500;
+  letter-spacing: 0.2px;
 }
 
 .kicker {
-  font-family: "Special Elite", monospace;
+  font-family: "Jost", sans-serif;
+  font-weight: 600;
   color: var(--stamp);
-  font-size: 0.74rem;
-  letter-spacing: 1.4px;
+  font-size: 0.72rem;
+  letter-spacing: 2.2px;
   text-transform: uppercase;
   margin-bottom: 6px;
 }
@@ -55,16 +57,18 @@ h1, h2, h3 {
 .btn {
   display: inline-block;
   border: none;
-  padding: 12px 22px;
-  border-radius: 5px;
-  font-size: 0.88rem;
-  font-weight: 700;
+  padding: 12px 24px;
+  border-radius: 2px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
   transition: background 0.15s ease;
 }
 
 .btn-primary {
   background: var(--stamp);
-  color: var(--tag);
+  color: var(--stamp-ink);
 }
 
 .btn-primary:hover {
@@ -90,14 +94,14 @@ h1, h2, h3 {
 }
 
 /* Secondary/outline button — used for CSV export and range picker actions,
-   quieter than the primary red-stamp button so it doesn't compete with it. */
+   quieter than the primary brass button so it doesn't compete with it. */
 .btn-outline {
   background: none;
   border: 1px solid var(--border);
   color: var(--text);
   padding: 8px 14px;
-  border-radius: 6px;
-  font-size: 0.84rem;
+  border-radius: 3px;
+  font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -120,15 +124,16 @@ h1, h2, h3 {
 .login-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  padding: 38px 34px;
-  border-radius: 12px;
+  padding: 40px 36px;
+  border-radius: 6px;
   width: min(380px, 100%);
   box-shadow: var(--shadow);
 }
 
 .login-card h1 {
-  font-size: 1.8rem;
+  font-size: 1.9rem;
   margin-bottom: 4px;
+  font-style: italic;
 }
 
 .login-sub {
@@ -141,29 +146,29 @@ h1, h2, h3 {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 0.86rem;
-  font-weight: 600;
+  font-size: 0.84rem;
+  font-weight: 500;
   margin-bottom: 14px;
 }
 
 .login-card input {
-  font-family: "Work Sans", sans-serif;
+  font-family: "Jost", sans-serif;
   font-size: 0.92rem;
   padding: 11px 13px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 3px;
   background: var(--bg);
   color: var(--text);
   font-weight: 400;
 }
 
 .login-card input:focus {
-  outline: 2px solid var(--stamp);
+  outline: 1.5px solid var(--stamp);
   outline-offset: 1px;
 }
 
 .form-error {
-  color: var(--stamp);
+  color: #d17b5f;
   font-size: 0.85rem;
   min-height: 1.2em;
   margin-bottom: 4px;
@@ -204,9 +209,10 @@ h1, h2, h3 {
 }
 
 .sidebar-logo {
-  font-family: "Anton", sans-serif;
-  font-size: 1.25rem;
+  font-family: "Bodoni Moda", serif;
+  font-size: 1.3rem;
   padding: 0 22px 24px;
+  font-style: italic;
 }
 
 .sidebar-logo span {
@@ -226,20 +232,21 @@ h1, h2, h3 {
   color: var(--text-dim);
   text-align: left;
   padding: 12px 22px;
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.88rem;
+  font-weight: 500;
+  letter-spacing: 0.3px;
   border-left: 3px solid transparent;
 }
 
 .nav-item:hover {
   color: var(--text);
-  background: rgba(43, 32, 24, 0.05);
+  background: rgba(201, 162, 39, 0.06);
 }
 
 .nav-item.active {
   color: var(--text);
   border-left-color: var(--stamp);
-  background: rgba(193, 67, 42, 0.08);
+  background: rgba(201, 162, 39, 0.1);
 }
 
 .nav-item.logout {
@@ -287,11 +294,11 @@ h1, h2, h3 {
 
 .orders-toolbar input,
 .orders-toolbar select {
-  font-family: "Work Sans", sans-serif;
+  font-family: "Jost", sans-serif;
   font-size: 0.88rem;
   padding: 9px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 3px;
   background: var(--surface);
   color: var(--text);
 }
@@ -307,7 +314,7 @@ h1, h2, h3 {
 
 .orders-toolbar input:focus,
 .orders-toolbar select:focus {
-  outline: 2px solid var(--stamp);
+  outline: 1.5px solid var(--stamp);
   outline-offset: 1px;
 }
 
@@ -324,7 +331,7 @@ h1, h2, h3 {
 .granularity-toggle {
   display: inline-flex;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
   background: var(--surface);
 }
@@ -333,8 +340,8 @@ h1, h2, h3 {
   background: none;
   border: none;
   padding: 9px 18px;
-  font-size: 0.84rem;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 500;
   color: var(--text-dim);
   border-right: 1px solid var(--border);
 }
@@ -345,11 +352,11 @@ h1, h2, h3 {
 
 .granularity-btn.active {
   background: var(--stamp);
-  color: var(--tag);
+  color: var(--stamp-ink);
 }
 
 .granularity-btn:hover:not(.active) {
-  background: var(--bg-soft);
+  background: rgba(201, 162, 39, 0.08);
   color: var(--text);
 }
 
@@ -364,25 +371,26 @@ h1, h2, h3 {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 600;
   color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.6px;
 }
 
 .date-range-picker input[type="date"] {
-  font-family: "Work Sans", sans-serif;
+  font-family: "Jost", sans-serif;
   font-size: 0.86rem;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 3px;
   background: var(--surface);
   color: var(--text);
+  color-scheme: dark;
 }
 
 .date-range-picker input[type="date"]:focus {
-  outline: 2px solid var(--stamp);
+  outline: 1.5px solid var(--stamp);
   outline-offset: 1px;
 }
 
@@ -391,7 +399,7 @@ h1, h2, h3 {
 }
 
 .stat-value.trend-down {
-  color: var(--stamp);
+  color: #d17b5f;
 }
 
 /* Dependency-free bar chart — plain divs, sized with inline heights set
@@ -424,7 +432,7 @@ h1, h2, h3 {
   max-width: 26px;
   margin: 0 auto;
   background: var(--stamp);
-  border-radius: 3px 3px 0 0;
+  border-radius: 2px 2px 0 0;
   min-height: 2px;
   transition: background 0.15s ease;
 }
@@ -435,7 +443,7 @@ h1, h2, h3 {
 
 .bar-chart-label {
   margin-top: 6px;
-  font-size: 0.64rem;
+  font-size: 0.62rem;
   color: var(--text-dim);
   writing-mode: vertical-rl;
   transform: rotate(180deg);
@@ -461,7 +469,7 @@ h1, h2, h3 {
 .stat-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 18px 20px;
   display: flex;
   flex-direction: column;
@@ -469,11 +477,11 @@ h1, h2, h3 {
 }
 
 .stat-label {
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   color: var(--text-dim);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.6px;
 }
 
 .stat-value {
@@ -481,12 +489,13 @@ h1, h2, h3 {
   font-size: 1.7rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
 .panel-block {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 22px 24px;
   margin-bottom: 24px;
 }
@@ -496,9 +505,9 @@ h1, h2, h3 {
 }
 
 .panel-block h3 {
-  font-family: "Work Sans", sans-serif;
-  font-weight: 700;
-  font-size: 1rem;
+  font-family: "Bodoni Moda", serif;
+  font-weight: 500;
+  font-size: 1.05rem;
   margin-bottom: 14px;
 }
 
@@ -507,7 +516,7 @@ h1, h2, h3 {
   overflow-x: auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 6px;
 }
 
 .data-table {
@@ -522,9 +531,9 @@ h1, h2, h3 {
   padding: 12px 16px;
   background: var(--bg-soft);
   border-bottom: 1px solid var(--border);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.6px;
   color: var(--text-dim);
 }
 
@@ -540,7 +549,7 @@ h1, h2, h3 {
 }
 
 .data-table tbody tr:hover {
-  background: rgba(43, 32, 24, 0.04);
+  background: rgba(201, 162, 39, 0.05);
 }
 
 .empty-row td {
@@ -554,10 +563,11 @@ h1, h2, h3 {
   text-align: left;
   color: var(--text-dim);
   background: var(--bg-soft);
-  font-family: "Special Elite", monospace;
-  font-size: 0.7rem;
+  font-family: "Jost", sans-serif;
+  font-weight: 600;
+  font-size: 0.68rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   padding: 8px 16px;
 }
 
@@ -568,7 +578,7 @@ h1, h2, h3 {
 .row-thumb {
   width: 44px;
   height: 44px;
-  border-radius: 6px;
+  border-radius: 4px;
   object-fit: cover;
   display: block;
   border: 1px solid var(--border);
@@ -581,31 +591,32 @@ h1, h2, h3 {
 /* ===== BADGES ===== */
 .badge {
   display: inline-block;
-  font-family: "Special Elite", monospace;
-  font-size: 0.68rem;
+  font-family: "Jost", sans-serif;
+  font-weight: 600;
+  font-size: 0.66rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 4px 9px;
+  letter-spacing: 0.6px;
+  padding: 4px 10px;
   border-radius: 3px;
   white-space: nowrap;
 }
 
-.badge.ok { background: rgba(79, 122, 99, 0.18); color: var(--ok); }
-.badge.low { background: rgba(209, 161, 60, 0.2); color: var(--warn); }
-.badge.out { background: rgba(110, 97, 82, 0.3); color: var(--text-dim); }
-.badge.paid { background: rgba(79, 122, 99, 0.18); color: var(--ok); }
-.badge.pending { background: rgba(209, 161, 60, 0.2); color: var(--warn); cursor: pointer; }
-.badge.needs-refund { background: rgba(193, 67, 42, 0.18); color: var(--stamp); cursor: pointer; }
-.badge.refunded { background: rgba(110, 97, 82, 0.25); color: var(--text-dim); }
+.badge.ok { background: rgba(127, 156, 118, 0.18); color: var(--ok); }
+.badge.low { background: rgba(214, 162, 60, 0.2); color: var(--warn); }
+.badge.out { background: rgba(110, 99, 83, 0.3); color: var(--text-dim); }
+.badge.paid { background: rgba(127, 156, 118, 0.18); color: var(--ok); }
+.badge.pending { background: rgba(214, 162, 60, 0.2); color: var(--warn); cursor: pointer; }
+.badge.needs-refund { background: rgba(209, 123, 95, 0.18); color: #d17b5f; cursor: pointer; }
+.badge.refunded { background: rgba(110, 99, 83, 0.28); color: var(--text-dim); }
 
 .fulfillment-select {
   display: block;
   margin-top: 6px;
-  font-family: "Work Sans", sans-serif;
+  font-family: "Jost", sans-serif;
   font-size: 0.76rem;
   font-weight: 600;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: 3px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -614,17 +625,17 @@ h1, h2, h3 {
 
 /* Pending gets the boldest treatment on purpose — it's a new order the
    admin hasn't looked at yet, so it should be the hardest to miss. */
-.fulfillment-select.fulfillment-pending { border-color: var(--stamp); background: rgba(193, 67, 42, 0.1); color: var(--stamp-dark); font-weight: 700; }
-.fulfillment-select.fulfillment-processing { border-color: rgba(209, 161, 60, 0.5); color: var(--warn); }
-.fulfillment-select.fulfillment-out-for-delivery { border-color: rgba(74, 108, 111, 0.5); color: #4a6c6f; }
-.fulfillment-select.fulfillment-delivered { border-color: rgba(79, 122, 99, 0.5); color: var(--ok); }
-.fulfillment-select.fulfillment-cancelled { border-color: rgba(193, 67, 42, 0.5); color: var(--stamp); }
+.fulfillment-select.fulfillment-pending { border-color: var(--stamp); background: rgba(201, 162, 39, 0.12); color: var(--stamp); font-weight: 700; }
+.fulfillment-select.fulfillment-processing { border-color: rgba(214, 162, 60, 0.5); color: var(--warn); }
+.fulfillment-select.fulfillment-out-for-delivery { border-color: rgba(140, 170, 180, 0.5); color: #8caab4; }
+.fulfillment-select.fulfillment-delivered { border-color: rgba(127, 156, 118, 0.5); color: var(--ok); }
+.fulfillment-select.fulfillment-cancelled { border-color: rgba(209, 123, 95, 0.5); color: #d17b5f; }
 
-.badge.fulfillment-pending { background: var(--stamp); color: #fffcf5; font-weight: 700; }
-.badge.fulfillment-processing { background: rgba(209, 161, 60, 0.2); color: var(--warn); }
-.badge.fulfillment-out-for-delivery { background: rgba(74, 108, 111, 0.15); color: #4a6c6f; }
-.badge.fulfillment-delivered { background: rgba(79, 122, 99, 0.18); color: var(--ok); }
-.badge.fulfillment-cancelled { background: rgba(193, 67, 42, 0.15); color: var(--stamp); }
+.badge.fulfillment-pending { background: var(--stamp); color: var(--stamp-ink); font-weight: 700; }
+.badge.fulfillment-processing { background: rgba(214, 162, 60, 0.2); color: var(--warn); }
+.badge.fulfillment-out-for-delivery { background: rgba(140, 170, 180, 0.15); color: #8caab4; }
+.badge.fulfillment-delivered { background: rgba(127, 156, 118, 0.18); color: var(--ok); }
+.badge.fulfillment-cancelled { background: rgba(209, 123, 95, 0.15); color: #d17b5f; }
 
 .row-actions {
   display: flex;
@@ -637,7 +648,7 @@ h1, h2, h3 {
   background: none;
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 5px;
+  border-radius: 3px;
   padding: 5px 9px;
   font-size: 0.76rem;
   white-space: nowrap;
@@ -648,15 +659,15 @@ h1, h2, h3 {
 }
 
 .row-actions .danger {
-  color: var(--stamp);
-  border-color: rgba(193, 67, 42, 0.35);
+  color: #d17b5f;
+  border-color: rgba(209, 123, 95, 0.35);
 }
 
 /* ===== OVERLAY + MODAL ===== */
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.65);
   z-index: 90;
   opacity: 0;
   pointer-events: none;
@@ -675,7 +686,7 @@ h1, h2, h3 {
   transform: translate(-50%, -48%);
   background: var(--bg-soft);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 6px;
   width: min(440px, 92vw);
   max-height: 88vh;
   overflow-y: auto;
@@ -698,6 +709,7 @@ h1, h2, h3 {
 
 .modal-header h3 {
   font-size: 1.15rem;
+  font-style: italic;
 }
 
 .stack-form {
@@ -710,17 +722,17 @@ h1, h2, h3 {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.84rem;
+  font-weight: 500;
 }
 
 .stack-form input,
 .stack-form select {
-  font-family: "Work Sans", sans-serif;
+  font-family: "Jost", sans-serif;
   font-size: 0.92rem;
   padding: 11px 13px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 3px;
   background: var(--bg);
   color: var(--text);
   font-weight: 400;
@@ -728,7 +740,7 @@ h1, h2, h3 {
 
 .stack-form input:focus,
 .stack-form select:focus {
-  outline: 2px solid var(--stamp);
+  outline: 1.5px solid var(--stamp);
   outline-offset: 1px;
 }
 
@@ -746,7 +758,7 @@ h1, h2, h3 {
 .restock-info {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 12px 14px;
   font-size: 0.86rem;
   color: var(--text-dim);
@@ -760,7 +772,7 @@ h1, h2, h3 {
 .image-preview-wrap {
   width: 100%;
   aspect-ratio: 4 / 3;
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--bg);
@@ -829,7 +841,7 @@ h1, h2, h3 {
 .order-summary {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 14px 16px;
   font-size: 0.85rem;
   margin-bottom: 14px;
