@@ -30,6 +30,7 @@
         <a href="/admin/" id="adminDashboardLink" class="admin-dashboard-link hidden">Admin Dashboard</a>
       </nav>
       <div class="nav-actions">
+        <button id="trackOrderBtn" class="track-order-btn">Track Order</button>
         <button id="accountBtn" class="account-btn">Log In</button>
         <!-- Shown instead of "Log In" once signed in — nested inside
              nav-actions (position:relative) so it anchors right under
@@ -323,6 +324,28 @@
       <button id="closeMyOrders" class="icon-btn" aria-label="Close">✕</button>
     </div>
     <div id="myOrdersList" class="my-orders-list"></div>
+  </div>
+
+  <!-- ===== TRACK ORDER MODAL — no account needed, just order code + contact ===== -->
+  <div id="trackOrderOverlay" class="overlay"></div>
+  <div id="trackOrderModal" class="modal modal-wide">
+    <div class="modal-header">
+      <h3>Track My Order</h3>
+      <button id="closeTrackOrder" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+
+    <form id="trackOrderForm" class="stack-form">
+      <label>Order code
+        <input type="text" id="trackOrderCode" required placeholder="ORD-260807-B038A" />
+      </label>
+      <label>Contact number or email <span class="opt">(the one you used at checkout)</span>
+        <input type="text" id="trackOrderContact" required placeholder="09xx xxx xxxx or you@gmail.com" />
+      </label>
+      <p id="trackOrderError" class="form-error"></p>
+      <button type="submit" class="btn btn-primary btn-full">Track Order</button>
+    </form>
+
+    <div id="trackOrderResult" class="my-orders-list hidden"></div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>

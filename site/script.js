@@ -596,6 +596,68 @@ function closeMyOrders() {
   document.getElementById("myOrdersOverlay").classList.remove("show");
 }
 
+/* ---------------------------------------------------------------------
+   Track My Order — no account needed. Looks up a single order by its
+   code plus the contact number or email given at checkout, via the
+   track_order() database function (see supabase-schema-track-order.sql)
+   so guest checkouts (the majority of orders) can still check status.
+   --------------------------------------------------------------------- */
+function openTrackOrder() {
+  document.getElementById("trackOrderForm").reset();
+  document.getElementById("trackOrderError").textContent = "";
+  document.getElementById("trackOrderResult").classList.add("hidden");
+  document.getElementById("trackOrderModal").classList.add("show");
+  document.getElementById("trackOrderOverlay").classList.add("show");
+}
+
+function closeTrackOrder() {
+  document.getElementById("trackOrderModal").classList.remove("show");
+  document.getElementById("trackOrderOverlay").classList.remove("show");
+}
+
+async function handleTrackOrderSubmit(e) {
+  e.preventDefault();
+  const orderCode = document.getElementById("trackOrderCode").value.trim();
+  const contact = document.getElementById("trackOrderContact").value.trim();
+  const errorEl = document.getElementById("trackOrderError");
+  const resultEl = document.getElementById("trackOrderResult");
+
+  errorEl.textContent = "";
+  resultEl.classList.add("hidden");
+
+  const { data, error } = await sb.rpc("track_order", { p_order_code: orderCode, p_contact: contact });
+
+  if (error) {
+    errorEl.textContent = "Something went wrong — please try again.";
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    errorEl.textContent = "No order found with that code and contact info. Double-check both and try again.";
+    return;
+  }
+
+  const o = data[0];
+  const items = o.items.map((it) => `${it.name} (${it.size}/${it.color}) ×${it.qty}`).join(", ");
+  const statusClass = o.payment_status === "Paid" ? "ok" : o.payment_status === "Refunded" ? "out" : "low";
+
+  resultEl.innerHTML = `
+    <div class="my-order-card">
+      <div class="my-order-top">
+        <span class="mono">${o.order_code}</span>
+        <span class="stock-pill ${statusClass}">${o.payment_status}</span>
+      </div>
+      <p class="my-order-items">${items}</p>
+      ${orderTrackerHtml(o.order_status)}
+      <div class="my-order-bottom">
+        <span class="mono">${peso(o.total)}</span>
+        <span>${new Date(o.created_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}</span>
+      </div>
+    </div>
+  `;
+  resultEl.classList.remove("hidden");
+}
+
 async function initAuth() {
   const { data } = await sb.auth.getSession();
   CURRENT_USER = data.session?.user || null;
@@ -750,4 +812,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("closeMyOrders").addEventListener("click", closeMyOrders);
   document.getElementById("myOrdersOverlay").addEventListener("click", closeMyOrders);
+
+  document.getElementById("trackOrderBtn").addEventListener("click", openTrackOrder);
+  document.getElementById("closeTrackOrder").addEventListener("click", closeTrackOrder);
+  document.getElementById("trackOrderOverlay").addEventListener("click", closeTrackOrder);
+  document.getElementById("trackOrderForm").addEventListener("submit", handleTrackOrderSubmit);
 });

@@ -160,7 +160,8 @@ button {
   position: relative;
 }
 
-.account-btn {
+.account-btn,
+.track-order-btn {
   background: none;
   border: 1px solid rgba(251, 245, 232, 0.35);
   color: inherit;
@@ -172,11 +173,13 @@ button {
 }
 
 .navbar.scrolled .cart-btn,
-.navbar.scrolled .account-btn {
+.navbar.scrolled .account-btn,
+.navbar.scrolled .track-order-btn {
   border-color: var(--border);
 }
 
-.account-btn:hover {
+.account-btn:hover,
+.track-order-btn:hover {
   border-color: var(--stamp);
 }
 
@@ -1334,6 +1337,15 @@ button {
 @media (max-width: 720px) {
   .nav-links {
     display: none;
+  }
+
+  .nav-actions {
+    gap: 6px;
+  }
+
+  .track-order-btn {
+    padding: 9px 12px;
+    font-size: 0.78rem;
   }
 
   .hero {
