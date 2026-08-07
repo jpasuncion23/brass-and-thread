@@ -492,9 +492,14 @@ async function handleAuthSubmit(e) {
 function updateAccountUI() {
   const accountBtn = document.getElementById("accountBtn");
   if (CURRENT_USER) {
-    const firstName = CURRENT_USER.user_metadata?.first_name;
-    const label = firstName || CURRENT_USER.user_metadata?.full_name || CURRENT_USER.email;
-    accountBtn.textContent = "Hi, " + label.split(" ")[0];
+    const meta = CURRENT_USER.user_metadata || {};
+    // Prefer a first name; if all we have is the email (no name on file),
+    // use just the part before "@" — the full address is too long for
+    // this pill button and breaks the navbar layout.
+    const label = meta.first_name
+      || (meta.full_name ? meta.full_name.split(" ")[0] : null)
+      || CURRENT_USER.email.split("@")[0];
+    accountBtn.textContent = "Hi, " + label;
   } else {
     accountBtn.textContent = "Log In";
   }

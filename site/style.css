@@ -117,6 +117,7 @@ button {
   font-size: 0.82rem;
   font-weight: 600;
   color: var(--stamp) !important;
+  white-space: nowrap;
 }
 
 .admin-dashboard-link:hover {
@@ -170,6 +171,13 @@ button {
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
+}
+
+.account-btn {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .navbar.scrolled .cart-btn,
