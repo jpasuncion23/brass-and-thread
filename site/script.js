@@ -957,3 +957,70 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("quickViewOverlay").addEventListener("click", closeQuickView);
   document.getElementById("qvAddToCartBtn").addEventListener("click", handleQuickViewAddToCart);
 });
+
+/* =========================================================================
+   Brass & Thread — scroll reveal
+   Self-contained: doesn't touch script.js, cart state, or order logic.
+   Fades sections up into place as they enter the viewport. Product cards
+   are picked up automatically the moment script.js renders them into
+   #productGrid — no coordination with that file needed.
+   ========================================================================= */
+   (function () {
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  
+    const staticSelectors = [
+      ".section-head",
+      ".how-card",
+      ".faq-item",
+      ".sizechart-table-wrap",
+      ".sizechart-note",
+      ".contact-section h2",
+      ".contact-section p",
+    ];
+  
+    function markReveal(el) {
+      if (!el || el.classList.contains("reveal")) return;
+      el.classList.add("reveal");
+    }
+  
+    document.querySelectorAll(staticSelectors.join(",")).forEach(markReveal);
+  
+    // Respect the setting — show everything immediately, no motion at all.
+    if (prefersReduced) {
+      document.querySelectorAll(".reveal").forEach((el) => el.classList.add("in-view"));
+      return;
+    }
+  
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("in-view");
+            observer.unobserve(entry.target); // reveal once, don't re-hide on scroll back up
+          }
+        });
+      },
+      { threshold: 0.15, rootMargin: "0px 0px -40px 0px" }
+    );
+  
+    document.querySelectorAll(".reveal").forEach((el) => observer.observe(el));
+  
+    // Product cards don't exist yet at page load — script.js renders them
+    // into #productGrid after fetching stock. Watch for that and reveal
+    // each card, staggered slightly by its position in the grid.
+    const grid = document.getElementById("productGrid");
+    if (grid) {
+      const revealCard = (card, index) => {
+        markReveal(card);
+        card.style.setProperty("--reveal-delay", `${(index % 6) * 0.08}s`);
+        observer.observe(card);
+      };
+  
+      grid.querySelectorAll(".product-card").forEach(revealCard);
+  
+      const gridObserver = new MutationObserver(() => {
+        grid.querySelectorAll(".product-card:not(.reveal)").forEach((card, i) => revealCard(card, i));
+      });
+      gridObserver.observe(grid, { childList: true });
+    }
+  })();
