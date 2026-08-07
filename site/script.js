@@ -498,6 +498,23 @@ function updateAccountUI() {
     accountBtn.textContent = "Log In";
   }
   document.getElementById("accountMenu").classList.remove("show");
+  updateAdminLinkVisibility();
+}
+
+/* ---------------------------------------------------------------------
+   Admin Dashboard link — only shown once we've confirmed the signed-in
+   account is actually listed in `admins` (see supabase-schema-optional-
+   login.sql). A customer account never sees this, logged in or not.
+   --------------------------------------------------------------------- */
+async function updateAdminLinkVisibility() {
+  const link = document.getElementById("adminDashboardLink");
+  if (!CURRENT_USER) {
+    link.classList.add("hidden");
+    return;
+  }
+
+  const { data, error } = await sb.from("admins").select("user_id").eq("user_id", CURRENT_USER.id).maybeSingle();
+  link.classList.toggle("hidden", error || !data);
 }
 
 function toggleAccountMenu() {

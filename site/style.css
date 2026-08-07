@@ -110,6 +110,20 @@ button {
   color: var(--stamp);
 }
 
+.admin-dashboard-link {
+  border: 1px solid var(--stamp);
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--stamp) !important;
+}
+
+.admin-dashboard-link:hover {
+  background: var(--stamp);
+  color: var(--tag) !important;
+}
+
 .cart-btn {
   background: none;
   border: 1px solid rgba(251, 245, 232, 0.35);
@@ -676,19 +690,6 @@ button {
   border-top: 1px solid var(--border);
   color: var(--text-dim);
   font-size: 0.82rem;
-}
-
-.footer-admin-link {
-  display: inline-block;
-  margin-top: 8px;
-  font-size: 0.76rem;
-  color: var(--text-dim);
-  opacity: 0.6;
-}
-
-.footer-admin-link:hover {
-  opacity: 1;
-  color: var(--stamp);
 }
 
 /* ===== OVERLAY ===== */

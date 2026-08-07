@@ -22,6 +22,20 @@ create table if not exists admins (
   user_id uuid primary key references auth.users(id) on delete cascade
 );
 
+-- Newer Supabase projects enable RLS by default on every new table. If
+-- this table has no SELECT policy, the `exists (select 1 from admins ...)`
+-- check inside every product/order policy sees nothing and always
+-- evaluates false — every admin write then silently affects 0 rows
+-- (no error, nothing happens). This policy is what makes that check work.
+alter table admins enable row level security;
+
+drop policy if exists "Authenticated can check admin membership" on admins;
+
+create policy "Authenticated can check admin membership"
+  on admins for select
+  to authenticated
+  using (true);
+
 insert into admins (user_id)
 select id from auth.users where email = 'jpasuncion.laca@gmail.com'
 on conflict (user_id) do nothing;
