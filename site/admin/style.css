@@ -387,6 +387,8 @@ h1, h2, h3 {
 .badge.out { background: rgba(110, 97, 82, 0.3); color: var(--text-dim); }
 .badge.paid { background: rgba(79, 122, 99, 0.18); color: var(--ok); }
 .badge.pending { background: rgba(209, 161, 60, 0.2); color: var(--warn); cursor: pointer; }
+.badge.needs-refund { background: rgba(193, 67, 42, 0.18); color: var(--stamp); cursor: pointer; }
+.badge.refunded { background: rgba(110, 97, 82, 0.25); color: var(--text-dim); }
 
 .fulfillment-select {
   display: block;

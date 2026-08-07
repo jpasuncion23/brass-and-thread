@@ -426,9 +426,18 @@ async function deleteProduct(id) {
    Orders
    --------------------------------------------------------------------- */
 function statusBadge(order) {
-  return order.payment_status === "Paid"
-    ? `<span class="badge paid">Paid</span>`
-    : `<span class="badge pending" data-toggle-status="${order.id}" title="Click para markahang Paid">Pending</span>`;
+  if (order.payment_status === "Refunded") {
+    return `<span class="badge refunded">Refunded</span>`;
+  }
+  // Cancelled after already being paid (usually GCash) — flag it until
+  // the admin confirms the money's actually been sent back.
+  if (order.payment_status === "Paid" && order.order_status === "Cancelled") {
+    return `<span class="badge needs-refund" data-mark-refunded="${order.id}" title="Click once the refund has been sent">Needs Refund</span>`;
+  }
+  if (order.payment_status === "Paid") {
+    return `<span class="badge paid">Paid</span>`;
+  }
+  return `<span class="badge pending" data-toggle-status="${order.id}" title="Click to mark Paid">Pending</span>`;
 }
 
 function renderOrders() {
@@ -582,6 +591,20 @@ function attachStatusToggles() {
     el.dataset.bound = "1";
     el.addEventListener("click", async () => {
       const { error } = await sb.from("orders").update({ payment_status: "Paid" }).eq("id", el.dataset.toggleStatus);
+      if (error) {
+        alert("Couldn't update: " + error.message);
+        return;
+      }
+      loadAll();
+    });
+  });
+
+  document.querySelectorAll("[data-mark-refunded]").forEach((el) => {
+    if (el.dataset.bound) return;
+    el.dataset.bound = "1";
+    el.addEventListener("click", async () => {
+      if (!confirm("Mark this order as refunded? Only click this once you've actually sent the money back.")) return;
+      const { error } = await sb.from("orders").update({ payment_status: "Refunded" }).eq("id", el.dataset.markRefunded);
       if (error) {
         alert("Couldn't update: " + error.message);
         return;

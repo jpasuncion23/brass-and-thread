@@ -550,7 +550,7 @@ async function openMyOrders() {
     ? orders
         .map((o) => {
           const items = o.items.map((it) => `${it.name} (${it.size}/${it.color}) ×${it.qty}`).join(", ");
-          const statusClass = o.payment_status === "Paid" ? "ok" : "low";
+          const statusClass = o.payment_status === "Paid" ? "ok" : o.payment_status === "Refunded" ? "out" : "low";
           return `
         <div class="my-order-card">
           <div class="my-order-top">
