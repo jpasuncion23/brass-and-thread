@@ -557,6 +557,7 @@ async function openMyOrders() {
             <span class="stock-pill ${statusClass}">${o.payment_status}</span>
           </div>
           <p class="my-order-items">${items}</p>
+          ${orderTrackerHtml(o.order_status)}
           <div class="my-order-bottom">
             <span class="mono">${peso(o.total)}</span>
             <span>${new Date(o.created_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}</span>
@@ -565,6 +566,28 @@ async function openMyOrders() {
         })
         .join("")
     : `<p class="cart-empty">You don't have any orders yet.</p>`;
+}
+
+/* ---------------------------------------------------------------------
+   Order tracker — a Lazada/Shopee-style progress stepper for the
+   fulfillment stage the admin sets from the ShopTrack dashboard.
+   --------------------------------------------------------------------- */
+function orderTrackerHtml(status) {
+  if (status === "Cancelled") {
+    return `<div class="order-tracker cancelled"><span class="tracker-cancelled-label">✕ Order Cancelled</span></div>`;
+  }
+
+  const stages = ["Processing", "Out for Delivery", "Delivered"];
+  const currentIndex = Math.max(stages.indexOf(status), 0);
+
+  const steps = stages
+    .map((stage, i) => {
+      const state = i < currentIndex ? "done" : i === currentIndex ? "active" : "";
+      return `<div class="tracker-step ${state}"><span class="tracker-dot"></span><span class="tracker-label">${stage}</span></div>`;
+    })
+    .join("");
+
+  return `<div class="order-tracker">${steps}</div>`;
 }
 
 function closeMyOrders() {

@@ -452,16 +452,47 @@ function renderOrders() {
         <td class="mono">${peso(o.total)}</td>
         <td>${channelBadge(o.channel)}</td>
         <td>${o.payment_method}</td>
-        <td>${statusBadge(o)}</td>
+        <td>${statusBadge(o)}${fulfillmentSelect(o)}</td>
         <td>${formatDate(o.created_at)}</td>
         <td><button data-view-order="${o.id}">View</button></td>
       </tr>`;
   }).join("");
 
   attachStatusToggles();
+  attachFulfillmentSelects();
 
   document.querySelectorAll("[data-view-order]").forEach((btn) => {
     btn.addEventListener("click", () => openOrderDetail(btn.dataset.viewOrder));
+  });
+}
+
+/* ---------------------------------------------------------------------
+   Fulfillment status — the shipping-stage tracking (Processing → Out
+   for Delivery → Delivered, or Cancelled), separate from whether the
+   order has been paid.
+   --------------------------------------------------------------------- */
+const ORDER_STATUSES = ["Processing", "Out for Delivery", "Delivered", "Cancelled"];
+
+function fulfillmentSelect(order) {
+  const options = ORDER_STATUSES.map(
+    (s) => `<option value="${s}" ${s === order.order_status ? "selected" : ""}>${s}</option>`
+  ).join("");
+  return `<select class="fulfillment-select fulfillment-${order.order_status.replace(/\s+/g, "-").toLowerCase()}" data-order-id="${order.id}">${options}</select>`;
+}
+
+function attachFulfillmentSelects() {
+  document.querySelectorAll(".fulfillment-select").forEach((select) => {
+    if (select.dataset.bound) return;
+    select.dataset.bound = "1";
+    select.addEventListener("change", async () => {
+      const newStatus = select.value;
+      const { error } = await sb.from("orders").update({ order_status: newStatus }).eq("id", select.dataset.orderId);
+      if (error) {
+        alert("Couldn't update fulfillment status: " + error.message);
+        return;
+      }
+      loadAll();
+    });
   });
 }
 
@@ -484,6 +515,10 @@ function openOrderDetail(id) {
       ${channelBadge(order.channel)}
       ${statusBadge(order)}
     </div>
+
+    <label class="fulfillment-label">Fulfillment status
+      ${fulfillmentSelect(order)}
+    </label>
 
     <div class="order-detail-grid">
       <div>
@@ -521,6 +556,7 @@ function openOrderDetail(id) {
   `;
 
   attachStatusToggles();
+  attachFulfillmentSelects();
   document.getElementById("orderDetailModal").classList.add("show");
   document.getElementById("orderDetailOverlay").classList.add("show");
 }

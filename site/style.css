@@ -1128,6 +1128,82 @@ button {
   margin-bottom: 8px;
 }
 
+/* ===== ORDER TRACKER (Lazada/Shopee-style stepper) ===== */
+.order-tracker {
+  display: flex;
+  align-items: flex-start;
+  margin: 10px 0 12px;
+}
+
+.tracker-step {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.tracker-step::before {
+  /* connecting line to the next step */
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+
+.tracker-step:last-child::before {
+  display: none;
+}
+
+.tracker-step.done::before {
+  background: var(--ok);
+}
+
+.tracker-dot {
+  position: relative;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--border);
+  margin-bottom: 6px;
+}
+
+.tracker-step.done .tracker-dot,
+.tracker-step.active .tracker-dot {
+  background: var(--ok);
+}
+
+.tracker-step.active .tracker-dot {
+  box-shadow: 0 0 0 3px rgba(63, 122, 92, 0.25);
+}
+
+.tracker-label {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.tracker-step.done .tracker-label,
+.tracker-step.active .tracker-label {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.order-tracker.cancelled {
+  padding: 6px 0;
+}
+
+.tracker-cancelled-label {
+  color: var(--stamp);
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
 .my-order-bottom {
   display: flex;
   justify-content: space-between;
