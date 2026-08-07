@@ -1097,6 +1097,22 @@ button {
   margin-left: 4px;
 }
 
+.forgot-password-link {
+  background: none;
+  border: none;
+  color: #666666;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  margin-top: -6px;
+}
+
+.forgot-password-link:hover {
+  color: #111111;
+  text-decoration: underline;
+}
+
 /* ===== MY ORDERS ===== */
 .my-orders-list {
   display: flex;

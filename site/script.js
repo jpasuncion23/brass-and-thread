@@ -429,6 +429,7 @@ function setAuthMode(mode) {
   document.getElementById("authNameRow").classList.toggle("hidden", !isSignup);
   document.getElementById("authSwitchText").textContent = isSignup ? "Already have an account?" : "Don't have an account?";
   document.getElementById("authSwitchBtn").textContent = isSignup ? "Log In" : "Sign Up";
+  document.getElementById("forgotPasswordBtn").classList.toggle("hidden", isSignup);
   document.getElementById("authError").textContent = "";
 }
 
@@ -600,10 +601,89 @@ async function initAuth() {
   CURRENT_USER = data.session?.user || null;
   updateAccountUI();
 
-  sb.auth.onAuthStateChange((_event, session) => {
+  sb.auth.onAuthStateChange((event, session) => {
     CURRENT_USER = session?.user || null;
     updateAccountUI();
+
+    // Supabase lands the user back here (via the emailed reset link)
+    // with a temporary "recovery" session — that's our cue to ask for
+    // a new password instead of treating it as a normal login.
+    if (event === "PASSWORD_RECOVERY") {
+      openNewPasswordModal();
+    }
   });
+}
+
+/* ---------------------------------------------------------------------
+   Forgot password — sends a reset link to the email on file. No
+   account lookup needed client-side; Supabase just no-ops quietly if
+   the address doesn't match anything, same as it does for signup.
+   --------------------------------------------------------------------- */
+function openForgotPassword() {
+  closeAuth();
+  document.getElementById("forgotForm").reset();
+  document.getElementById("forgotError").textContent = "";
+  document.getElementById("forgotEmail").value = document.getElementById("authEmail").value;
+  document.getElementById("forgotModal").classList.add("show");
+  document.getElementById("forgotOverlay").classList.add("show");
+}
+
+function closeForgotPassword() {
+  document.getElementById("forgotModal").classList.remove("show");
+  document.getElementById("forgotOverlay").classList.remove("show");
+}
+
+async function handleForgotSubmit(e) {
+  e.preventDefault();
+  const email = document.getElementById("forgotEmail").value.trim();
+  const errorEl = document.getElementById("forgotError");
+  const btn = document.getElementById("forgotSubmitBtn");
+
+  btn.disabled = true;
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname,
+  });
+  btn.disabled = false;
+
+  if (error) {
+    errorEl.textContent = error.message;
+    return;
+  }
+
+  closeForgotPassword();
+  alert(`If an account exists for ${email}, a password reset link is on its way — check your inbox.`);
+}
+
+/* ---------------------------------------------------------------------
+   Set new password — reached only via the emailed reset link
+   (PASSWORD_RECOVERY event above), never opened directly by a button.
+   --------------------------------------------------------------------- */
+function openNewPasswordModal() {
+  document.getElementById("newPasswordForm").reset();
+  document.getElementById("newPasswordError").textContent = "";
+  document.getElementById("newPasswordModal").classList.add("show");
+  document.getElementById("newPasswordOverlay").classList.add("show");
+}
+
+function closeNewPasswordModal() {
+  document.getElementById("newPasswordModal").classList.remove("show");
+  document.getElementById("newPasswordOverlay").classList.remove("show");
+}
+
+async function handleNewPasswordSubmit(e) {
+  e.preventDefault();
+  const password = document.getElementById("newPassword").value;
+  const errorEl = document.getElementById("newPasswordError");
+
+  const { error } = await sb.auth.updateUser({ password });
+
+  if (error) {
+    errorEl.textContent = error.message;
+    return;
+  }
+
+  closeNewPasswordModal();
+  alert("Password updated! You're logged in with your new password.");
 }
 
 /* ---------------------------------------------------------------------
@@ -659,6 +739,14 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("authSwitchBtn").addEventListener("click", () =>
     setAuthMode(authMode === "signup" ? "login" : "signup")
   );
+
+  document.getElementById("forgotPasswordBtn").addEventListener("click", openForgotPassword);
+  document.getElementById("forgotCancelBtn").addEventListener("click", closeForgotPassword);
+  document.getElementById("forgotOverlay").addEventListener("click", closeForgotPassword);
+  document.getElementById("forgotForm").addEventListener("submit", handleForgotSubmit);
+
+  document.getElementById("newPasswordOverlay").addEventListener("click", closeNewPasswordModal);
+  document.getElementById("newPasswordForm").addEventListener("submit", handleNewPasswordSubmit);
 
   document.getElementById("closeMyOrders").addEventListener("click", closeMyOrders);
   document.getElementById("myOrdersOverlay").addEventListener("click", closeMyOrders);

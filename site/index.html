@@ -205,6 +205,7 @@
       <label>Password
         <input type="password" id="authPassword" required minlength="6" placeholder="Password" />
       </label>
+      <button type="button" id="forgotPasswordBtn" class="forgot-password-link">Forgot password?</button>
       <p id="authError" class="form-error"></p>
 
       <button type="submit" id="authSubmitBtn" class="auth-submit-btn">Submit</button>
@@ -215,6 +216,36 @@
       <span id="authSwitchText">Don't have an account?</span>
       <button id="authSwitchBtn" type="button">Sign Up</button>
     </p>
+  </div>
+
+  <!-- ===== FORGOT PASSWORD MODAL ===== -->
+  <div id="forgotOverlay" class="overlay"></div>
+  <div id="forgotModal" class="modal auth-modal">
+    <h3>Reset Password</h3>
+    <p class="auth-note">
+      Enter your email — we'll send you a link to set a new password.
+    </p>
+    <form id="forgotForm" class="auth-form">
+      <label>Email
+        <input type="email" id="forgotEmail" required placeholder="Email" />
+      </label>
+      <p id="forgotError" class="form-error"></p>
+      <button type="submit" id="forgotSubmitBtn" class="auth-submit-btn">Send Reset Link</button>
+      <button type="button" id="forgotCancelBtn" class="auth-cancel-btn">Cancel</button>
+    </form>
+  </div>
+
+  <!-- ===== SET NEW PASSWORD MODAL (opened from the emailed reset link) ===== -->
+  <div id="newPasswordOverlay" class="overlay"></div>
+  <div id="newPasswordModal" class="modal auth-modal">
+    <h3>Set New Password</h3>
+    <form id="newPasswordForm" class="auth-form">
+      <label>New password
+        <input type="password" id="newPassword" required minlength="6" placeholder="New password" />
+      </label>
+      <p id="newPasswordError" class="form-error"></p>
+      <button type="submit" class="auth-submit-btn">Update Password</button>
+    </form>
   </div>
 
   <!-- ===== MY ORDERS MODAL ===== -->

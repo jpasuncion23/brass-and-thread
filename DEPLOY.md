@@ -105,6 +105,92 @@ orders, at ikaw lang bilang admin makikita/makaka-edit ng lahat.
 
 ---
 
+## Update — Forgot Password + Real Email Requirement
+
+Customer accounts (Sign Up) at ang bagong **"Forgot password?"** link ay
+umaasa sa email na aktwal na naka-verify ng Supabase mismo — kaya
+importanteng i-check ang dalawang setting na ito **isang beses**:
+
+1. Supabase dashboard → **Authentication → Sign In / Providers** →
+   siguraduhing **naka-ON** ang **"Confirm email"** — dito ang dahilan
+   kung bakit hindi puwedeng basta-basta gamitin ng customer ang fake
+   email: hindi sila makaka-Log In hangga't hindi na-click yung
+   confirmation link na pinadala sa totoong inbox nila.
+2. Supabase dashboard → **Authentication → URL Configuration** → idagdag
+   sa **Redirect URLs** ang totoong Netlify link mo, hal.
+   `https://brassthread.netlify.app/*` — kailangan ito para gumana nang
+   tama ang "Forgot password" reset link (kung wala ito, maaaring
+   maipadala pero mag-redirect sa maling lugar o mag-error).
+
+Wala nang idadagdag pang code dito — mga setting lang ang babaguhin sa
+Supabase dashboard.
+
+---
+
+## Update — Order Status Email Notifications
+
+Kapag binago ng admin ang fulfillment status ng isang order (Processing →
+Out for Delivery → Delivered, o Cancelled), automatic na maka-email ang
+customer. Setup ito, may 4 na parte:
+
+### Part 1 — Gumawa ng Resend account (libreng email service)
+
+1. Pumunta sa **[resend.com](https://resend.com)** → Sign up (libre, 100
+   email/day, 3,000/buwan).
+2. Sa dashboard → **API Keys** → **Create API Key** → kopyahin yung key
+   (nagsisimula sa `re_...`) — makikita mo lang ito **isang beses**, i-save
+   mo agad.
+3. Hindi mo na kailangan i-verify ang domain para sa demo — may built-in
+   silang test sender (`onboarding@resend.dev`) na pwedeng mag-email sa
+   kahit kanino, walang setup.
+
+### Part 2 — I-deploy ang Edge Function
+
+1. Sa Supabase dashboard → sidebar → **Edge Functions** → **Create a new
+   function**.
+2. Pangalanan: **`send-order-email`** (eksakto ito, kasi ito yung tatawagin
+   ng database trigger sa Part 4).
+3. Buksan ang [supabase/functions/send-order-email/index.ts](supabase/functions/send-order-email/index.ts)
+   dito sa project mo, i-select all + copy, i-paste sa editor ng Supabase
+   (papalit sa placeholder code nila).
+4. Kung may option na **"Verify JWT"** o "Enforce JWT verification" —
+   **i-OFF/uncheck mo ito** (may sariling secret-check na ang function na
+   ito, hindi na kailangan ng Supabase JWT dahil isang database trigger
+   ang tumatawag dito, hindi isang naka-login na browser).
+5. **Deploy**.
+6. Pumunta sa **Edge Functions → Manage secrets** (o "Secrets" tab), idagdag
+   ang dalawa:
+   - `RESEND_API_KEY` = yung key mula Part 1
+   - `WEBHOOK_SECRET` = kahit anong random na text na gagawin mo (hal.
+     `bt-webhook-8x2k9m` — sarili mong gawa, basta tandaan mo, gagamitin
+     ulit sa Part 4)
+
+### Part 3 — Kunin ang Project Reference ID mo
+
+Settings → General → **Reference ID** (yung ID na ginamit mo na dati para
+sa Project URL — `https://<reference-id>.supabase.co`).
+
+### Part 4 — I-run ang trigger SQL
+
+1. Buksan ang [supabase-schema-order-email-trigger.sql](supabase-schema-order-email-trigger.sql).
+2. Palitan ang:
+   - `YOUR-PROJECT-REF` → yung Reference ID mula Part 3
+   - `YOUR-WEBHOOK-SECRET` → yung **eksaktong** parehong value na inilagay
+     mo bilang `WEBHOOK_SECRET` sa Part 2, Step 6
+3. Select all, copy, paste sa **SQL Editor** → **Run**.
+
+### Subukan
+
+1. Pumunta sa admin Orders tab, palitan ang Fulfillment ng isang order
+   (halimbawa papuntang "Out for Delivery").
+2. Tignan ang email address na nakalagay sa order na iyon — dapat may
+   dumating na email sa loob ng ilang segundo.
+3. Kung walang dumating: Supabase dashboard → **Edge Functions →
+   send-order-email → Logs** — makikita mo dun kung ano ang error (mali
+   ba yung secret, o may isyu sa Resend key).
+
+---
+
 ## Paalala tungkol sa security
 
 - Ang **anon key** ay talagang OK na makita ng publiko sa code — ganito
