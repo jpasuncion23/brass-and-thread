@@ -110,7 +110,7 @@ function renderDashboard() {
   const lowStock = PRODUCTS.filter((p) => p.stock > 0 && p.stock <= LOW_STOCK_THRESHOLD).length;
   const soldOut = PRODUCTS.filter((p) => p.stock <= 0).length;
   const pending = ORDERS.filter((o) => o.payment_status === "Pending").length;
-  const totalSales = ORDERS.reduce((sum, o) => sum + Number(o.total), 0);
+  const totalSales = ORDERS.filter((o) => o.order_status !== "Cancelled").reduce((sum, o) => sum + Number(o.total), 0);
 
   document.getElementById("statProducts").textContent = PRODUCTS.length;
   document.getElementById("statUnits").textContent = totalUnits;
@@ -489,7 +489,15 @@ function attachFulfillmentSelects() {
     select.dataset.bound = "1";
     select.addEventListener("change", async () => {
       const newStatus = select.value;
-      const { error } = await sb.from("orders").update({ order_status: newStatus }).eq("id", select.dataset.orderId);
+      const orderId = select.dataset.orderId;
+
+      // Cancelling goes through a dedicated function that also puts the
+      // stock back — a plain status update would leave it deducted.
+      const { error } =
+        newStatus === "Cancelled"
+          ? await sb.rpc("cancel_order", { p_order_id: orderId })
+          : await sb.from("orders").update({ order_status: newStatus }).eq("id", orderId);
+
       if (error) {
         alert("Couldn't update fulfillment status: " + error.message);
         return;
