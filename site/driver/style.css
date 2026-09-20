@@ -228,10 +228,15 @@ h1 {
 
 .order-address,
 .order-contact,
-.order-items {
+.order-items,
+.order-payment-note {
   color: var(--text-dim);
   font-size: 0.85rem;
   margin-bottom: 2px;
+}
+
+.order-payment-note {
+  font-style: italic;
 }
 
 .order-mark-btn {

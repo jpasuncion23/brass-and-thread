@@ -980,8 +980,16 @@
      } else if (payload.eventType === "UPDATE") {
        const wasPaid = payload.old?.payment_status === "Paid";
        const nowPaid = payload.new.payment_status === "Paid";
-       if (!wasPaid && nowPaid) {
+       const wasDelivered = payload.old?.order_status === "Delivered";
+       const nowDelivered = payload.new.order_status === "Delivered";
+
+       if (!wasPaid && nowPaid && nowDelivered) {
+         // COD, marked by the driver — payment and delivery happen together.
+         showToast(`${payload.new.order_code} marked Paid & Delivered (COD)`);
+       } else if (!wasPaid && nowPaid) {
          showToast(`${payload.new.order_code} marked Paid (${payload.new.payment_method})`);
+       } else if (!wasDelivered && nowDelivered) {
+         showToast(`${payload.new.order_code} marked Delivered`);
        }
      }
      loadAll();

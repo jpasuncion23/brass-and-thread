@@ -261,18 +261,29 @@ storefront gaya ng lahat, tapos awtomatiko silang dadalhin dito.)
    values ('PASTE-DRIVER-USER-UID', 'Pangalan ng Driver');
    ```
    Ulitin ito per driver.
-4. I-deploy ang bagong `site` folder (kasama na ang `site/driver/`).
+4. Buksan ang [supabase-schema-driver-all-deliveries.sql](supabase-schema-driver-all-deliveries.sql),
+   copy lahat, paste sa **SQL Editor** → **Run**. (Dagdag update ito —
+   dati COD lang ang makikita ng driver, ngayon makikita na niya LAHAT
+   ng order na "Out for Delivery" anuman ang payment method, dahil
+   kailangan pa ring i-deliver yun kahit online na binayaran.)
+5. I-deploy ang bagong `site` folder (kasama na ang `site/driver/`).
    Sabihin mo lang sa driver na pumunta sa storefront mismo at mag-Log
    In gamit ang account na ginawa mo — awtomatiko na silang dadalhin sa
    driver dashboard.
 
-**Paano ito gumagana:** makikita lang ng isang driver account ang mga
-COD order na "Out for Delivery" — wala silang access sa inventory,
-analytics, o ibang orders. Ang pag-click nila ng "Mark Paid & Delivered"
-ay dumadaan sa isang function sa database (`mark_cod_paid_delivered`) na
-nagsusuri munang COD talaga at "Out for Delivery" bago pumayag —
-kailangan ito lahat gawin sa SQL Editor mismo, hindi puwedeng galingan
-ng driver o admin sa browser.
+**Paano ito gumagana:** makikita ng isang driver account ang LAHAT ng
+order na "Out for Delivery" — wala silang access sa inventory,
+analytics, o ibang orders na hindi pa "Out for Delivery". Depende sa
+payment method, iba ang button na makikita nila:
+- **COD** → "Mark Paid & Delivered" — dumadaan sa `mark_cod_paid_delivered`,
+  nagsusuri munang COD talaga bago pumayag, tapos minamarkahan PAREHONG
+  payment_status (Paid) at order_status (Delivered).
+- **GCash / Bank Transfer** → "Mark Delivered" lang — dumadaan sa
+  `mark_delivered`, order_status lang ang minamarkahan; ang payment
+  confirmation ay nanatili pa ring desisyon ng admin (hiwalay).
+
+Parehong function ay SQL na tumatakbo sa SQL Editor mismo — hindi
+puwedeng galingan ng driver o admin sa browser.
 
 **Tandaan:** dahil dito, sa admin Orders tab, hindi na pwedeng i-click
 ng admin ang "Pending" badge ng isang COD order (may paalala na lang
