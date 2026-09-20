@@ -29,50 +29,46 @@
    }
    
    /* ---------------------------------------------------------------------
-      Auth
+      Auth — no login form here. You log in from the storefront ("Log In"
+      in the navbar); get_my_role() there sends admin accounts to this
+      page. On load, this just checks: is there a session, and is it
+      actually an admin? If not, back to the storefront to log in.
       --------------------------------------------------------------------- */
-   async function handleLogin(e) {
-     e.preventDefault();
-     const email = document.getElementById("loginEmail").value.trim();
-     const password = document.getElementById("loginPass").value;
-     const errorEl = document.getElementById("loginError");
-     const btn = document.getElementById("loginBtn");
-   
-     btn.disabled = true;
-     btn.textContent = "Logging in…";
-   
-     const { error } = await sb.auth.signInWithPassword({ email, password });
-   
-     btn.disabled = false;
-     btn.textContent = "Log In";
-   
-     if (error) {
-       errorEl.textContent = "Incorrect email or password.";
+   async function checkAuthAndInit() {
+     const { data } = await sb.auth.getSession();
+
+     if (!data.session) {
+       goToLogin();
        return;
      }
-   
-     errorEl.textContent = "";
+
+     const { data: role } = await sb.rpc("get_my_role");
+     if (role !== "admin") {
+       await sb.auth.signOut();
+       goToLogin();
+       return;
+     }
+
      showApp();
    }
-   
+
+   function goToLogin() {
+     window.location.href = "/";
+   }
+
    async function handleLogout() {
      try {
        await sb.auth.signOut();
      } catch (err) {
        console.error("Sign out error:", err);
      }
-     showLogin();
+     goToLogin();
    }
-   
+
    function showApp() {
      document.getElementById("loginScreen").classList.add("hidden");
      document.getElementById("adminApp").classList.remove("hidden");
      loadAll();
-   }
-   
-   function showLogin() {
-     document.getElementById("adminApp").classList.add("hidden");
-     document.getElementById("loginScreen").classList.remove("hidden");
    }
    
    /* ---------------------------------------------------------------------
@@ -1005,15 +1001,9 @@
       Init
       --------------------------------------------------------------------- */
    document.addEventListener("DOMContentLoaded", async () => {
-     const { data } = await sb.auth.getSession();
-     if (data.session) {
-       showApp();
-     } else {
-       showLogin();
-     }
+     await checkAuthAndInit();
      subscribeRealtime();
-   
-     document.getElementById("loginForm").addEventListener("submit", handleLogin);
+
      document.getElementById("logoutBtn").addEventListener("click", handleLogout);
    
      document.querySelectorAll(".nav-item[data-tab]").forEach((btn) => {

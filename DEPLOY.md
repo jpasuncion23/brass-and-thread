@@ -51,8 +51,11 @@ Yung mga account sa Step 1 at Step 4 ay libre (free tier).
    makita mo ang mga overrun shirts (nangailangan ng internet dahil
    kumokonekta ito sa Supabase mo).
 2. Subukan mag-add to cart at mag-checkout — dapat gumana ang buong flow.
-3. I-double click `site/admin/index.html`, mag-login gamit ang email/password
-   mula Step 3 — dapat makita mo ang bagong order at ang bawas na stock.
+3. Mag-login gamit ang email/password mula Step 3 sa pamamagitan ng
+   **"Log In"** sa navbar ng `site/index.html` mismo (hindi na direkta
+   sa `site/admin/index.html` — basahin ang "Update — One Login Form"
+   sa ibaba kung bakit) — dapat madala ka agad sa admin dashboard, at
+   makita mo doon ang bagong order at ang bawas na stock.
 
 Kung may error: buksan ang browser DevTools (F12) → tab na **Console** —
 karamihan ng error ay typo sa `config.js` o hindi pa na-Run ang SQL script.
@@ -236,12 +239,16 @@ ito ng panibagong klase ng email.
 ## Update — Delivery Driver Accounts (COD marked Paid sa phone nila)
 
 Dati, ang admin/owner ang kailangang mag-click sa dashboard para
-markahan ang isang COD order bilang "Paid". Ngayon, may sariling login
-page ang mga delivery driver (`site/driver/`) — sila na mismo ang
-magmamarka ng "Paid & Delivered" sa sarili nilang phone sa mismong
-sandaling makolekta nila ang bayad. Awtomatikong nag-a-update ang admin
-dashboard (may live notification pa) at nakaka-email ang customer —
-wala nang kailangang gawin ang admin dito.
+markahan ang isang COD order bilang "Paid". Ngayon, may sarili silang
+dashboard (`site/driver/`) — sila na mismo ang magmamarka ng "Paid &
+Delivered" sa sarili nilang phone sa mismong sandaling makolekta nila
+ang bayad. Awtomatikong nag-a-update ang admin dashboard (may live
+notification pa) at nakaka-email ang customer — wala nang kailangang
+gawin ang admin dito.
+
+(Tandaan: mula sa Update — One Login Form sa ibaba, hindi na hiwalay na
+"login page" ang `site/driver/` — nag-lo-log in na lang ang driver sa
+storefront gaya ng lahat, tapos awtomatiko silang dadalhin dito.)
 
 1. Buksan ang [supabase-schema-delivery-drivers.sql](supabase-schema-delivery-drivers.sql),
    copy lahat, paste sa **SQL Editor** → **Run**.
@@ -254,10 +261,10 @@ wala nang kailangang gawin ang admin dito.
    values ('PASTE-DRIVER-USER-UID', 'Pangalan ng Driver');
    ```
    Ulitin ito per driver.
-4. I-drag din ang `site` folder papunta sa Netlify gaya ng dati (Step 6)
-   kung hindi mo pa na-deploy ulit — kasama na ang bagong `site/driver/`
-   folder. Ibigay sa driver ang link, hal.
-   `https://xxxxx-xxxxx.netlify.app/driver/`.
+4. I-deploy ang bagong `site` folder (kasama na ang `site/driver/`).
+   Sabihin mo lang sa driver na pumunta sa storefront mismo at mag-Log
+   In gamit ang account na ginawa mo — awtomatiko na silang dadalhin sa
+   driver dashboard.
 
 **Paano ito gumagana:** makikita lang ng isang driver account ang mga
 COD order na "Out for Delivery" — wala silang access sa inventory,
@@ -272,6 +279,41 @@ ng admin ang "Pending" badge ng isang COD order (may paalala na lang
 doon na driver ang magma-mark) — pero GCash/Bank Transfer orders,
 pareho pa rin ito ng dati, ang admin pa rin ang nagko-confirm nun
 pagkatapos i-check ang sarili nilang GCash/bank app.
+
+---
+
+## Update — One Login Form (customer, admin, driver)
+
+Dati, tatlong hiwalay na login form: storefront (customer), admin
+dashboard, driver portal. Ngayon, **isa na lang** — yung "Log In" sa
+navbar ng storefront (`site/index.html`). Pagka-login, tinatanong ng
+site ang database kung anong klase ng account ito, tapos:
+- **admin** → awtomatikong dadalhin sa `/admin/`
+- **driver** → awtomatikong dadalhin sa `/driver/`
+- **customer** (o walang laman sa `admins`/`drivers`) → mananatili lang
+  sa storefront, gaya ng normal na customer login
+
+Hindi ito nagbabago sa kung sino ang may access sa ano — yun ay nasa
+RLS policies at functions pa rin (`admins`/`drivers` tables). Ito ay
+UI convenience lang — isang pinto para sa lahat.
+
+1. Buksan ang [supabase-schema-unified-login.sql](supabase-schema-unified-login.sql),
+   copy lahat, paste sa **SQL Editor** → **Run**. (Kailangan mo munang
+   natapos ang Update — Optional Customer Accounts at Update — Delivery
+   Driver Accounts sa itaas, dahil ginagamit ng function na ito yung
+   `admins` at `drivers` tables na doon ginawa.)
+2. I-deploy ang bagong `site` folder.
+
+### Subukan
+
+1. Buksan ang storefront, i-click ang **"Log In"**, gamitin ang admin
+   email/password mo — dapat madala ka agad sa `/admin/`, walang
+   kailangang i-type na ibang URL.
+2. Log out, tapos ulitin gamit ang driver account — dapat madala sa
+   `/driver/`.
+3. Ulitin gamit ang ordinaryong customer account (o gumawa ng bago via
+   "Sign Up") — dapat manatili lang sa storefront, "My Orders" ang
+   makikita, hindi dadalhin kahit saan.
 
 ---
 

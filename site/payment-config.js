@@ -26,8 +26,8 @@ const PAYMENT_METHODS = [
     label: "GCash",
     blurb: "Pay via GCash — you'll see the account and QR code on the next screen.",
     manualPayment: true,
-    accountName: "PASTE YOUR GCASH ACCOUNT NAME",
-    accountNumber: "09XX XXX XXXX",
+    accountName: "SHOPTRACK",
+    accountNumber: "09682132101",
     qrImage: null, // e.g. "images/gcash-qr.jpg"
   },
   {

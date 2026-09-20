@@ -19,27 +19,18 @@
   <!-- ===== LIVE NOTIFICATIONS — new orders / COD marked Paid by a driver ===== -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <!-- ===== LOGIN ===== -->
+  <!-- ===== LOGIN ===== — there's no login form here anymore. Log in from
+       the storefront ("Log In" in the navbar) with your admin account;
+       it detects the role and sends you here automatically. This screen
+       only shows briefly while that check runs, or if you land here
+       without a session / with a non-admin one. ===== -->
   <section id="loginScreen" class="login-screen">
-    <form id="loginForm" class="login-card">
+    <div class="login-card">
       <p class="kicker">Admin Access</p>
       <h1>ShopTrack</h1>
-      <p class="login-sub">Inventory &amp; Orders for Shop &amp; Track</p>
-
-      <label>Email
-        <input type="email" id="loginEmail" autocomplete="username" required />
-      </label>
-      <label>Password
-        <input type="password" id="loginPass" autocomplete="current-password" required />
-      </label>
-
-      <p id="loginError" class="form-error"></p>
-
-      <button type="submit" id="loginBtn" class="btn btn-primary btn-full">Log In</button>
-      <p class="login-hint">
-        Use the admin account you created in Supabase → Authentication → Users.
-      </p>
-    </form>
+      <p class="login-sub" id="loginRedirectMessage">Redirecting to login…</p>
+      <a href="/" class="btn btn-primary btn-full">Go to Log In</a>
+    </div>
   </section>
 
   <!-- ===== ADMIN APP ===== -->

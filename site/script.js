@@ -687,6 +687,21 @@ async function handleAuthSubmit(e) {
     return;
   }
 
+  // One shared login for everyone — after signing in, ask the database
+  // what kind of account this is and send admin/driver accounts to
+  // their own dashboards. A plain customer just stays logged in here.
+  if (authMode === "login") {
+    const { data: role } = await sb.rpc("get_my_role");
+    if (role === "admin") {
+      window.location.href = "/admin/";
+      return;
+    }
+    if (role === "driver") {
+      window.location.href = "/driver/";
+      return;
+    }
+  }
+
   closeAuth();
   updateAccountUI();
 }

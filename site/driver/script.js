@@ -15,28 +15,12 @@ function peso(n) {
   return "₱" + Number(n).toLocaleString("en-PH");
 }
 
-async function handleLogin(e) {
-  e.preventDefault();
-  const email = document.getElementById("loginEmail").value.trim();
-  const password = document.getElementById("loginPass").value;
-  const errorEl = document.getElementById("loginError");
-  const btn = document.getElementById("loginBtn");
-
-  btn.disabled = true;
-  btn.textContent = "Logging in…";
-
-  const { error } = await sb.auth.signInWithPassword({ email, password });
-
-  btn.disabled = false;
-  btn.textContent = "Log In";
-
-  if (error) {
-    errorEl.textContent = "Incorrect email or password.";
-    return;
-  }
-
-  errorEl.textContent = "";
-  await showApp();
+// No login form here — you log in from the storefront ("Log In" in the
+// navbar); get_my_role() there sends driver accounts to this page. On
+// load, this just checks: is there a session, and is it actually a
+// driver? If not, back to the storefront to log in.
+function goToLogin() {
+  window.location.href = "/";
 }
 
 async function handleLogout() {
@@ -45,30 +29,22 @@ async function handleLogout() {
   } catch (err) {
     console.error("Sign out error:", err);
   }
-  showLogin();
+  goToLogin();
 }
 
 async function showApp() {
   const { data, error } = await sb.rpc("get_driver_orders");
 
   if (error) {
-    // Logged in fine, but this account isn't registered in the `drivers`
-    // table — not a driver account, so don't let them see the app shell.
-    document.getElementById("loginError").textContent =
-      "This account isn't set up as a driver. Ask the shop owner to add it.";
+    // Not registered in the `drivers` table — not a driver account.
     await sb.auth.signOut();
-    showLogin();
+    goToLogin();
     return;
   }
 
   document.getElementById("loginScreen").classList.add("hidden");
   document.getElementById("driverApp").classList.remove("hidden");
   renderOrders(data || []);
-}
-
-function showLogin() {
-  document.getElementById("driverApp").classList.add("hidden");
-  document.getElementById("loginScreen").classList.remove("hidden");
 }
 
 async function refreshOrders() {
@@ -146,10 +122,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (data.session) {
     await showApp();
   } else {
-    showLogin();
+    goToLogin();
+    return;
   }
   subscribeRealtime();
 
-  document.getElementById("loginForm").addEventListener("submit", handleLogin);
   document.getElementById("logoutBtn").addEventListener("click", handleLogout);
 });
