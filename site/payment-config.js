@@ -47,6 +47,6 @@ const PAYMENT_METHODS = [
    of "Delivery", so they know where and when to show up.
    ========================================================================= */
 const PICKUP_INFO = {
-  address: "PASTE YOUR PICKUP ADDRESS/LOCATION",
-  hours: "PASTE YOUR AVAILABLE PICKUP HOURS (e.g. Mon–Sat, 10am–6pm)",
+  address: "NU BALIWAG",
+  hours: "Mon–Sat, 10am–6pm)",
 };
