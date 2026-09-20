@@ -35,6 +35,21 @@ const STATUS_MESSAGE: Record<string, string> = {
   Cancelled: "Your order has been cancelled.",
 };
 
+// The database always stores "Out for Delivery"/"Delivered" regardless
+// of fulfillment method — these just pick the wording that actually
+// matches a Pickup order, where no rider is ever involved.
+function statusLabel(status: string, fulfillmentMethod: string): string {
+  if (status === "Out for Delivery" && fulfillmentMethod === "Pickup") return "Ready for Pickup";
+  return status;
+}
+
+function statusMessage(status: string, fulfillmentMethod: string): string {
+  if (status === "Out for Delivery" && fulfillmentMethod === "Pickup") {
+    return "Your order is ready for pickup!";
+  }
+  return STATUS_MESSAGE[status] || `Your order status is now: ${status}`;
+}
+
 // Keep this in sync with the payment method list in site/payment-config.js —
 // this is only the short reminder line for the email, not the full
 // instructions (those live on the page shown right after checkout, so a
@@ -72,6 +87,7 @@ function orderPlacedHtml(order: any): string {
       </table>
       <table style="width: 100%; border-collapse: collapse; margin: 8px 0 16px;">
         <tr><td style="padding: 4px 0; color: #6b6355;">Payment method</td><td style="padding: 4px 0; text-align: right;"><strong>${order.payment_method}</strong></td></tr>
+        <tr><td style="padding: 4px 0; color: #6b6355;">Delivery or pickup</td><td style="padding: 4px 0; text-align: right;"><strong>${order.fulfillment_method || "Delivery"}</strong></td></tr>
       </table>
       ${note ? `<p style="font-size: 14px;">${note}</p>` : ""}
       <p style="color: #6b6355; font-size: 13px;">
@@ -92,7 +108,7 @@ function statusChangedHtml(order: any, message: string): string {
       <p style="font-size: 16px;">${message}</p>
       <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
         <tr><td style="padding: 4px 0; color: #6b6355;">Order</td><td style="padding: 4px 0; text-align: right;"><strong>${order.order_code}</strong></td></tr>
-        <tr><td style="padding: 4px 0; color: #6b6355;">Status</td><td style="padding: 4px 0; text-align: right;"><strong>${order.order_status}</strong></td></tr>
+        <tr><td style="padding: 4px 0; color: #6b6355;">Status</td><td style="padding: 4px 0; text-align: right;"><strong>${statusLabel(order.order_status, order.fulfillment_method)}</strong></td></tr>
         <tr><td style="padding: 4px 0; color: #6b6355;">Payment</td><td style="padding: 4px 0; text-align: right;"><strong>${order.payment_status}</strong></td></tr>
         <tr><td style="padding: 4px 0; color: #6b6355;">Total</td><td style="padding: 4px 0; text-align: right;"><strong>₱${Number(order.total).toLocaleString("en-PH")}</strong></td></tr>
       </table>
@@ -153,6 +169,7 @@ Deno.serve(async (req: Request) => {
     return new Response("No status change — nothing to send", { status: 200 });
   }
 
-  const message = STATUS_MESSAGE[order.order_status] || `Your order status is now: ${order.order_status}`;
-  return sendEmail(order.email, `Order ${order.order_code} — ${order.order_status}`, statusChangedHtml(order, message));
+  const message = statusMessage(order.order_status, order.fulfillment_method);
+  const label = statusLabel(order.order_status, order.fulfillment_method);
+  return sendEmail(order.email, `Order ${order.order_code} — ${label}`, statusChangedHtml(order, message));
 });

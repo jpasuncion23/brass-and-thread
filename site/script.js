@@ -440,6 +440,8 @@ function openCheckout() {
   document.getElementById("checkoutForm").reset();
   document.getElementById("paymentMethod").value = "";
   renderPaymentMethods();
+  document.getElementById("fulfillmentMethod").value = "Delivery";
+  renderFulfillmentMethods();
 
   // Convenience only — a logged-in customer doesn't have to retype these.
   // Guests skip this entirely and the form just stays blank.
@@ -486,10 +488,60 @@ function renderPaymentMethods() {
   });
 }
 
-function openConfirm(orderCode, total, paymentMethod, contactNumber, fullName) {
+/* ---------------------------------------------------------------------
+   Delivery/pickup picker — same clickable-card pattern as payment
+   method. Toggles the delivery address field and a pickup-location note
+   (from PICKUP_INFO in site/payment-config.js) depending on the choice.
+   --------------------------------------------------------------------- */
+const FULFILLMENT_METHODS = [
+  { id: "Delivery", label: "Delivery", blurb: "We deliver to your address." },
+  { id: "Pickup", label: "Pickup", blurb: "You collect it in person — no delivery." },
+];
+
+function renderFulfillmentMethods() {
+  const picker = document.getElementById("fulfillmentMethodPicker");
+  const selected = document.getElementById("fulfillmentMethod").value;
+
+  picker.innerHTML = FULFILLMENT_METHODS.map(
+    (m) => `
+      <button type="button" class="payment-method-card${m.id === selected ? " selected" : ""}" data-id="${m.id}">
+        <span class="payment-method-label">${m.label}</span>
+        <span class="payment-method-blurb">${m.blurb}</span>
+      </button>
+    `
+  ).join("");
+
+  picker.querySelectorAll(".payment-method-card").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.getElementById("fulfillmentMethod").value = btn.dataset.id;
+      renderFulfillmentMethods();
+      updateFulfillmentFields();
+    });
+  });
+
+  updateFulfillmentFields();
+}
+
+function updateFulfillmentFields() {
+  const isPickup = document.getElementById("fulfillmentMethod").value === "Pickup";
+  document.getElementById("addressLabel").classList.toggle("hidden", isPickup);
+
+  const note = document.getElementById("pickupNote");
+  if (isPickup) {
+    note.textContent = `Pickup at: ${PICKUP_INFO.address} — ${PICKUP_INFO.hours}`;
+    note.classList.remove("hidden");
+  } else {
+    note.classList.add("hidden");
+  }
+}
+
+function openConfirm(orderCode, total, paymentMethod, contactNumber, fullName, fulfillmentMethod) {
+  const arrangementText =
+    fulfillmentMethod === "Pickup"
+      ? `We'll reach out at ${contactNumber} to confirm your pickup.`
+      : `We'll reach out at ${contactNumber} to arrange delivery.`;
   document.getElementById("confirmText").textContent =
-    `Thank you, ${fullName}! Order ${orderCode} — ${peso(total)} via ${paymentMethod}. ` +
-    `We'll reach out at ${contactNumber} to arrange delivery.`;
+    `Thank you, ${fullName}! Order ${orderCode} — ${peso(total)} via ${paymentMethod}. ` + arrangementText;
   document.getElementById("confirmModal").classList.add("show");
   document.getElementById("confirmOverlay").classList.add("show");
 }
@@ -556,9 +608,10 @@ async function handleCheckoutSubmit(e) {
   const email = document.getElementById("email").value.trim();
   const address = document.getElementById("address").value.trim();
   const paymentMethod = document.getElementById("paymentMethod").value;
+  const fulfillmentMethod = document.getElementById("fulfillmentMethod").value;
   const orderNotes = document.getElementById("orderNotes").value.trim();
 
-  if (!fullName || !contactNumber || !email || !paymentMethod) {
+  if (!fullName || !contactNumber || !email || !paymentMethod || !fulfillmentMethod) {
     errorEl.textContent = "Please fill out all required fields.";
     return;
   }
@@ -577,6 +630,7 @@ async function handleCheckoutSubmit(e) {
     p_address: address,
     p_payment_method: paymentMethod,
     p_order_notes: orderNotes,
+    p_fulfillment_method: fulfillmentMethod,
   });
 
   submitBtn.disabled = false;
@@ -599,7 +653,7 @@ async function handleCheckoutSubmit(e) {
   if (method && method.manualPayment) {
     openPaymentInstructions(order, method);
   } else {
-    openConfirm(order.order_code, order.total, paymentMethod, contactNumber, fullName);
+    openConfirm(order.order_code, order.total, paymentMethod, contactNumber, fullName, fulfillmentMethod);
   }
 }
 
@@ -780,7 +834,7 @@ async function openMyOrders() {
             <span class="stock-pill ${statusClass}">${o.payment_status}</span>
           </div>
           <p class="my-order-items">${items}</p>
-          ${orderTrackerHtml(o.order_status)}
+          ${orderTrackerHtml(o.order_status, o.fulfillment_method)}
           <div class="my-order-bottom">
             <span class="mono">${peso(o.total)}</span>
             <span>${new Date(o.created_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}</span>
@@ -795,13 +849,15 @@ async function openMyOrders() {
    Order tracker — a Lazada/Shopee-style progress stepper for the
    fulfillment stage the admin sets from the ShopTrack dashboard.
    --------------------------------------------------------------------- */
-function orderTrackerHtml(status) {
+function orderTrackerHtml(status, fulfillmentMethod) {
   if (status === "Cancelled") {
     return `<div class="order-tracker cancelled"><span class="tracker-cancelled-label">✕ Order Cancelled</span></div>`;
   }
 
-  const stages = ["Pending", "Processing", "Out for Delivery", "Delivered"];
-  const currentIndex = Math.max(stages.indexOf(status), 0);
+  const isPickup = fulfillmentMethod === "Pickup";
+  const stages = ["Pending", "Processing", isPickup ? "Ready for Pickup" : "Out for Delivery", "Delivered"];
+  // The database still stores "Out for Delivery" for both — only the label shown here differs.
+  const currentIndex = Math.max(stages.indexOf(status === "Out for Delivery" ? stages[2] : status), 0);
 
   const steps = stages
     .map((stage, i) => {
@@ -869,7 +925,7 @@ async function handleTrackOrderSubmit(e) {
             <span class="stock-pill ${statusClass}">${o.payment_status}</span>
           </div>
           <p class="my-order-items">${items}</p>
-          ${orderTrackerHtml(o.order_status)}
+          ${orderTrackerHtml(o.order_status, o.fulfillment_method)}
           <div class="my-order-bottom">
             <span class="mono">${peso(o.total)}</span>
             <span>${new Date(o.created_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}</span>

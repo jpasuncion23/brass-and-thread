@@ -143,7 +143,7 @@
       <div class="how-card">
         <span class="how-num">02</span>
         <h3>Fill out one form</h3>
-        <p>Name, contact number, email, address if you need delivery, and how you'll pay.</p>
+        <p>Delivery or pickup, name, contact number, email, address if delivering, and how you'll pay.</p>
       </div>
       <div class="how-card">
         <span class="how-num">03</span>
@@ -216,6 +216,10 @@
     <form id="checkoutForm" class="stack-form">
       <div id="checkoutSummary" class="order-summary"></div>
 
+      <label>Delivery or pickup <span class="req">*</span></label>
+      <div id="fulfillmentMethodPicker" class="payment-method-picker"></div>
+      <input type="hidden" id="fulfillmentMethod" value="Delivery" required />
+
       <label>Full name <span class="req">*</span>
         <input type="text" id="fullName" required placeholder="Juan Dela Cruz" />
       </label>
@@ -225,9 +229,10 @@
       <label>Email <span class="req">*</span>
         <input type="email" id="email" required placeholder="you@gmail.com" />
       </label>
-      <label>Delivery address <span class="opt">(optional)</span>
+      <label id="addressLabel">Delivery address <span class="opt">(optional)</span>
         <textarea id="address" rows="2" placeholder="Street, Barangay, City"></textarea>
       </label>
+      <p id="pickupNote" class="opt pickup-note hidden"></p>
       <label>Payment method <span class="req">*</span></label>
       <div id="paymentMethodPicker" class="payment-method-picker"></div>
       <input type="hidden" id="paymentMethod" required />

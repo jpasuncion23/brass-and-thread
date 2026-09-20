@@ -136,7 +136,7 @@
            <td>${o.full_name}</td>
            <td class="mono">${peso(o.total)}</td>
            <td>${statusBadge(o)}</td>
-           <td>${fulfillmentBadge(o.order_status)}</td>
+           <td>${fulfillmentBadge(o.order_status, o.fulfillment_method)}</td>
            <td>${formatDate(o.created_at)}</td>
          </tr>`
            )
@@ -720,11 +720,13 @@
      if (order.payment_status === "Paid") {
        return `<span class="badge paid">Paid</span>`;
      }
-     // COD is marked Paid by the delivery driver's own account, on their
+     // COD + Delivery is marked Paid by the rider's own account, on their
      // phone, at the moment they actually collect the cash — not here.
+     // COD + Pickup never touches a rider at all, so the admin still
+     // marks it Paid themselves once the customer pays in person.
      // See site/driver/ and supabase-schema-delivery-drivers.sql.
-     if (order.payment_method === "COD") {
-       return `<span class="badge pending" title="Marked Paid by the delivery driver on drop-off">Pending (COD)</span>`;
+     if (order.payment_method === "COD" && order.fulfillment_method === "Delivery") {
+       return `<span class="badge pending" title="Marked Paid by the rider on drop-off">Pending (COD)</span>`;
      }
      return `<span class="badge pending" data-toggle-status="${order.id}" title="Click to mark Paid">Pending</span>`;
    }
@@ -737,7 +739,7 @@
          <td>${o.full_name}<br><span class="opt">${o.contact_number || ""}</span></td>
          <td>${summary}</td>
          <td class="mono">${peso(o.total)}</td>
-         <td>${o.payment_method}<br>${statusBadge(o)}</td>
+         <td>${o.payment_method} · ${o.fulfillment_method || "Delivery"}<br>${statusBadge(o)}</td>
          <td>${fulfillmentSelect(o)}</td>
          <td>${formatDate(o.created_at)}</td>
          <td><button data-view-order="${o.id}">View</button></td>
@@ -814,17 +816,27 @@
       once work on it actually begins.
       --------------------------------------------------------------------- */
    const ORDER_STATUSES = ["Pending", "Processing", "Out for Delivery", "Delivered", "Cancelled"];
-   
-   function fulfillmentBadge(status) {
+
+   // The database always stores "Out for Delivery" regardless of
+   // fulfillment method — this just relabels it "Ready for Pickup" in
+   // the UI for Pickup orders, since no rider is ever involved for those.
+   function statusLabel(status, fulfillmentMethod) {
+     if (status === "Out for Delivery" && fulfillmentMethod === "Pickup") {
+       return "Ready for Pickup";
+     }
+     return status;
+   }
+
+   function fulfillmentBadge(status, fulfillmentMethod) {
      status = status || "Pending"; // falls back gracefully if the column isn't there yet
      const cls = "fulfillment-" + status.replace(/\s+/g, "-").toLowerCase();
-     return `<span class="badge ${cls}">${status}</span>`;
+     return `<span class="badge ${cls}">${statusLabel(status, fulfillmentMethod)}</span>`;
    }
-   
+
    function fulfillmentSelect(order) {
      const current = order.order_status || "Pending";
      const options = ORDER_STATUSES.map(
-       (s) => `<option value="${s}" ${s === current ? "selected" : ""}>${s}</option>`
+       (s) => `<option value="${s}" ${s === current ? "selected" : ""}>${statusLabel(s, order.fulfillment_method)}</option>`
      ).join("");
      return `<select class="fulfillment-select fulfillment-${current.replace(/\s+/g, "-").toLowerCase()}" data-order-id="${order.id}">${options}</select>`;
    }
@@ -892,6 +904,10 @@
          <div>
            <p class="opt">Payment method</p>
            <p>${order.payment_method}</p>
+         </div>
+         <div>
+           <p class="opt">Fulfillment method</p>
+           <p>${order.fulfillment_method || "Delivery"}</p>
          </div>
          <div class="span-2">
            <p class="opt">Delivery address</p>

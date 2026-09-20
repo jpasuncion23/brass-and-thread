@@ -1247,6 +1247,15 @@
     color: var(--text-dim);
   }
 
+  .pickup-note {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-top: -6px;
+    font-size: 0.82rem;
+  }
+
   /* ===== PAYMENT INSTRUCTIONS PAGE — shown after checkout for GCash /
      Bank Transfer. No payment API: just where to send the money. ===== */
   .modal-payment {

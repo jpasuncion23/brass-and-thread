@@ -328,6 +328,44 @@ UI convenience lang — isang pinto para sa lahat.
 
 ---
 
+## Update — Pickup o Delivery, pipiliin sa checkout
+
+Dagdag na choice sa checkout: **Delivery** o **Pickup**, kahit anong
+payment method (COD/GCash/Bank Transfer) — magkahiwalay ang dalawang
+desisyon. Ito ang nagbabago:
+
+- **Delivery** → gaya ng dati, driver ang humahawak pag "Out for
+  Delivery" na (site/driver/).
+- **Pickup** → hindi na kailanman lalabas sa driver portal — buong-buo
+  sa **admin** ito, kasama na ang pagmamarka ng COD bilang "Paid" (dati
+  driver lang ang pwede nun para sa Delivery orders — para sa Pickup,
+  bumalik ito sa admin dahil wala namang riders na sasali).
+- Sa mga tracker/status (storefront, admin, email), "Out for Delivery"
+  ay lumalabas bilang **"Ready for Pickup"** kapag Pickup ang pinili —
+  parehas lang talaga ang laman sa database, display text lang ang iba.
+
+1. Buksan ang [supabase-schema-pickup-or-delivery.sql](supabase-schema-pickup-or-delivery.sql),
+   copy lahat, paste sa **SQL Editor** → **Run**. (Kailangan mo munang
+   tapos na ang Update — Delivery Driver Accounts sa itaas.)
+2. Buksan ang [site/payment-config.js](site/payment-config.js), hanapin
+   ang `PICKUP_INFO` sa dulo ng file, palitan ang placeholder ng totoong
+   address at oras ng pickup mo — ito ang makikita ng customer kapag
+   pinili nila ang "Pickup".
+3. I-deploy ang bagong `site` folder.
+
+### Subukan
+
+1. Mag-checkout, piliin ang **Pickup** — dapat matago yung "Delivery
+   address" field at lumabas yung pickup address/oras na nilagay mo.
+2. Kumpletuhin yung order, tapos sa admin Orders tab, i-set ang
+   Fulfillment sa "Ready for Pickup" — dapat hindi ito lumabas sa driver
+   portal (kahit COD ito), at kaya pa rin ng admin i-click ang "Pending"
+   badge para markahan itong Paid.
+3. Gawin ulit gamit ang **Delivery** — dapat lumabas ito sa driver
+   portal kapag "Out for Delivery" na, gaya ng dati.
+
+---
+
 ## Update — Track Order: order number na lang, wala nang contact/email
 
 Dati, kailangan pa ng customer ilagay ang contact number o email nila
