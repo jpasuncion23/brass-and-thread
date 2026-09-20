@@ -191,6 +191,113 @@ sa Project URL — `https://<reference-id>.supabase.co`).
 
 ---
 
+## Update — Order Confirmation Email + Payment Method Pages (walang API)
+
+Ngayon, sa sandaling mag-checkout ang customer, agad silang makaka-email
+na may **order number** nila — kaya kahit hindi sila naka-login, pwede
+nilang gamitin yun sa **Track Order** kahit kailan. Bukod dito, may mga
+"payment method pages" na — pag pinili nila ang GCash o Bank Transfer,
+may lalabas na screen kung saan nakalagay ang account details, walang
+totoong payment gateway/API na ginamit dito (COD/GCash/Bank Transfer
+lang, kagaya ng dati).
+
+**Kailangan mo munang gawin ang Update — Order Status Email
+Notifications sa itaas** (Resend account + Edge Function na naka-deploy)
+bago ito, dahil pareho lang ang function na ginagamit — dinagdagan lang
+ito ng panibagong klase ng email.
+
+1. Kung nag-deploy ka na ng `send-order-email` dati, buksan ulit ang
+   [supabase/functions/send-order-email/index.ts](supabase/functions/send-order-email/index.ts)
+   dito sa project mo (na-update na ito), i-select all + copy, i-paste
+   ulit sa editor ng parehong Edge Function sa Supabase (papalit sa laman
+   nito) → **Deploy** ulit.
+2. Buksan ang [supabase-schema-order-confirmation-trigger.sql](supabase-schema-order-confirmation-trigger.sql),
+   copy lahat, paste sa **SQL Editor** → **Run**. (Gumagamit na ito ng
+   parehong URL/secret na nasa `supabase-schema-order-email-trigger.sql`
+   mo — huwag nang palitan kung wala kang binago dun.)
+3. Buksan ang [site/payment-config.js](site/payment-config.js) dito sa
+   project mo, palitan ang mga placeholder (`PASTE YOUR GCASH ACCOUNT
+   NAME`, atbp.) ng totoong GCash number/pangalan at bank details mo.
+   Kung may GCash QR code ka, i-save yung image sa `site/images/` (hal.
+   `gcash-qr.jpg`) tapos ilagay ang filename sa `qrImage` line.
+
+### Subukan
+
+1. Mag-checkout sa storefront gamit ang GCash o Bank Transfer — dapat
+   may lumabas na "Complete Your Payment" screen na may order number,
+   total, at account details mo.
+2. Tignan ang email — dapat dumating agad ang "Order [code] received"
+   na email, may order number.
+3. Buksan ang **Track Order** sa storefront, ilagay yung order number —
+   dapat makita ang order.
+
+---
+
+## Update — Delivery Driver Accounts (COD marked Paid sa phone nila)
+
+Dati, ang admin/owner ang kailangang mag-click sa dashboard para
+markahan ang isang COD order bilang "Paid". Ngayon, may sariling login
+page ang mga delivery driver (`site/driver/`) — sila na mismo ang
+magmamarka ng "Paid & Delivered" sa sarili nilang phone sa mismong
+sandaling makolekta nila ang bayad. Awtomatikong nag-a-update ang admin
+dashboard (may live notification pa) at nakaka-email ang customer —
+wala nang kailangang gawin ang admin dito.
+
+1. Buksan ang [supabase-schema-delivery-drivers.sql](supabase-schema-delivery-drivers.sql),
+   copy lahat, paste sa **SQL Editor** → **Run**.
+2. Gumawa ng account para sa bawat driver: Supabase dashboard →
+   **Authentication → Users → Add user** → email + password ng driver
+   (i-check ang "Auto Confirm User"). Kopyahin ang **User UID** niya.
+3. Sa **SQL Editor**, i-run (palitan ang UID at pangalan):
+   ```sql
+   insert into drivers (user_id, full_name)
+   values ('PASTE-DRIVER-USER-UID', 'Pangalan ng Driver');
+   ```
+   Ulitin ito per driver.
+4. I-drag din ang `site` folder papunta sa Netlify gaya ng dati (Step 6)
+   kung hindi mo pa na-deploy ulit — kasama na ang bagong `site/driver/`
+   folder. Ibigay sa driver ang link, hal.
+   `https://xxxxx-xxxxx.netlify.app/driver/`.
+
+**Paano ito gumagana:** makikita lang ng isang driver account ang mga
+COD order na "Out for Delivery" — wala silang access sa inventory,
+analytics, o ibang orders. Ang pag-click nila ng "Mark Paid & Delivered"
+ay dumadaan sa isang function sa database (`mark_cod_paid_delivered`) na
+nagsusuri munang COD talaga at "Out for Delivery" bago pumayag —
+kailangan ito lahat gawin sa SQL Editor mismo, hindi puwedeng galingan
+ng driver o admin sa browser.
+
+**Tandaan:** dahil dito, sa admin Orders tab, hindi na pwedeng i-click
+ng admin ang "Pending" badge ng isang COD order (may paalala na lang
+doon na driver ang magma-mark) — pero GCash/Bank Transfer orders,
+pareho pa rin ito ng dati, ang admin pa rin ang nagko-confirm nun
+pagkatapos i-check ang sarili nilang GCash/bank app.
+
+---
+
+## Update — Track Order: order number na lang, wala nang contact/email
+
+Dati, kailangan pa ng customer ilagay ang contact number o email nila
+para makita ang order nila sa "Track Order". Ngayon, **order number
+lang** ang hinihingi — yun mismo yung nakalagay sa email na natanggap
+nila pagka-checkout.
+
+1. Buksan ang [supabase-schema-track-order-code-only.sql](supabase-schema-track-order-code-only.sql),
+   copy lahat, paste sa **SQL Editor** → **Run**. Papalitan nito yung
+   lumang `track_order()` function (yung ginawa noon ng
+   `supabase-schema-track-order.sql`).
+2. I-deploy/i-drag ulit ang `site` folder sa Netlify kung hindi mo pa
+   nagagawa mula sa mga naunang update.
+
+### Subukan
+
+Mag-order sa storefront (o gamitin ang order number mula sa isang order
+na meron ka na), tapos i-click ang **Track Order** sa navbar, ilagay
+lang ang order number (hal. `ORD-250920-AB12C`) — dapat makita agad ang
+order, walang contact number o email na hinihingi.
+
+---
+
 ## Paalala tungkol sa security
 
 - Ang **anon key** ay talagang OK na makita ng publiko sa code — ganito

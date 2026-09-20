@@ -908,3 +908,33 @@ h1, h2, h3 {
     align-items: flex-start;
   }
 }
+
+/* ===== TOAST — live "new order" / "marked Paid" notifications ===== */
+.toast-container {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(340px, calc(100vw - 36px));
+}
+
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--stamp);
+  border-radius: 4px;
+  padding: 12px 16px;
+  font-size: 0.85rem;
+  color: var(--text);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}

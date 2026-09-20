@@ -724,6 +724,12 @@
      if (order.payment_status === "Paid") {
        return `<span class="badge paid">Paid</span>`;
      }
+     // COD is marked Paid by the delivery driver's own account, on their
+     // phone, at the moment they actually collect the cash — not here.
+     // See site/driver/ and supabase-schema-delivery-drivers.sql.
+     if (order.payment_method === "COD") {
+       return `<span class="badge pending" title="Marked Paid by the delivery driver on drop-off">Pending (COD)</span>`;
+     }
      return `<span class="badge pending" data-toggle-status="${order.id}" title="Click to mark Paid">Pending</span>`;
    }
    
@@ -951,15 +957,47 @@
    
    /* ---------------------------------------------------------------------
       Realtime — auto-refresh when the storefront (or another admin tab)
-      changes products/orders, no manual reload needed.
+      changes products/orders, no manual reload needed. Order changes
+      also surface as a toast, since this is the "notify the admin"
+      channel: no email-to-owner setup needed, just keep the dashboard
+      tab open.
       --------------------------------------------------------------------- */
+   function showToast(message) {
+     const container = document.getElementById("toastContainer");
+     if (!container) return;
+
+     const toast = document.createElement("div");
+     toast.className = "toast";
+     toast.textContent = message;
+     container.appendChild(toast);
+
+     setTimeout(() => toast.classList.add("show"), 10);
+     setTimeout(() => {
+       toast.classList.remove("show");
+       setTimeout(() => toast.remove(), 300);
+     }, 6000);
+   }
+
+   function handleOrdersRealtimeEvent(payload) {
+     if (payload.eventType === "INSERT") {
+       showToast(`New order ${payload.new.order_code} — ${peso(payload.new.total)}`);
+     } else if (payload.eventType === "UPDATE") {
+       const wasPaid = payload.old?.payment_status === "Paid";
+       const nowPaid = payload.new.payment_status === "Paid";
+       if (!wasPaid && nowPaid) {
+         showToast(`${payload.new.order_code} marked Paid (${payload.new.payment_method})`);
+       }
+     }
+     loadAll();
+   }
+
    function subscribeRealtime() {
      sb.channel("admin-products")
        .on("postgres_changes", { event: "*", schema: "public", table: "products" }, loadAll)
        .subscribe();
-   
+
      sb.channel("admin-orders")
-       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, loadAll)
+       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, handleOrdersRealtimeEvent)
        .subscribe();
    }
    

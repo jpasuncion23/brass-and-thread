@@ -108,7 +108,7 @@
       </details>
       <details class="faq-item">
         <summary>How do I pay, and when?</summary>
-        <p>Cash on Delivery (COD) or GCash, chosen at checkout. GCash orders are marked Pending until we confirm the payment came through; COD is collected when your order arrives.</p>
+        <p>Cash on Delivery (COD), GCash, or Bank Transfer, chosen at checkout. Picking GCash or Bank Transfer shows you the account details right away, and your order number doubles as the payment reference — those orders are marked Pending until we confirm the payment came through. COD is collected (and marked paid) when your order arrives.</p>
       </details>
       <details class="faq-item">
         <summary>How long does delivery take?</summary>
@@ -120,7 +120,7 @@
       </details>
       <details class="faq-item">
         <summary>Can I track my order after checkout?</summary>
-        <p>Yes — log in and check "My Orders" for a live status. You'll also get an email whenever your order's status changes (pending, processing, out for delivery, delivered).</p>
+        <p>Yes — you'll get an email right after you order with your order number in it. Enter that number alone in "Track Order" anytime, no account needed — and if you did log in, "My Orders" shows a live status too. You'll also get an email whenever your order's status changes (processing, out for delivery, delivered).</p>
       </details>
       <details class="faq-item">
         <summary>Can I return or exchange an item?</summary>
@@ -228,13 +228,9 @@
       <label>Delivery address <span class="opt">(optional)</span>
         <textarea id="address" rows="2" placeholder="Street, Barangay, City"></textarea>
       </label>
-      <label>Payment method <span class="req">*</span>
-        <select id="paymentMethod" required>
-          <option value="" disabled selected>Select a payment method</option>
-          <option value="COD">Cash on Delivery (COD)</option>
-          <option value="GCash">GCash</option>
-        </select>
-      </label>
+      <label>Payment method <span class="req">*</span></label>
+      <div id="paymentMethodPicker" class="payment-method-picker"></div>
+      <input type="hidden" id="paymentMethod" required />
       <label>Order notes <span class="opt">(optional)</span>
         <textarea id="orderNotes" rows="2" placeholder="Size swap, delivery timing, etc."></textarea>
       </label>
@@ -242,6 +238,33 @@
       <p id="checkoutError" class="form-error"></p>
       <button type="submit" id="placeOrderBtn" class="btn btn-primary btn-full">Place Order</button>
     </form>
+  </div>
+
+  <!-- ===== PAYMENT INSTRUCTIONS PAGE — shown after checkout for manual
+       payment methods (GCash, Bank Transfer). No payment API involved:
+       this just tells the customer exactly where to send the money. ===== -->
+  <div id="paymentInstructionsOverlay" class="overlay"></div>
+  <div id="paymentInstructionsModal" class="modal modal-payment">
+    <div class="confirm-stamp">Order Placed</div>
+    <h3>Complete Your Payment</h3>
+    <p class="payment-instructions-order">
+      Order <strong id="piOrderCode"></strong> — <strong id="piTotal"></strong>
+    </p>
+    <p id="piMethodBlurb" class="payment-instructions-blurb"></p>
+
+    <div id="piQrWrap" class="payment-qr-wrap hidden">
+      <img id="piQrImage" class="payment-qr-image" alt="Payment QR code" />
+    </div>
+
+    <div id="piAccountDetails" class="payment-account-details"></div>
+
+    <p class="payment-instructions-note">
+      Please send the exact total above, then use <strong id="piOrderCodeInline"></strong> as your
+      payment reference. We'll confirm it on our end — you can check your order's payment status
+      anytime using <strong>Track Order</strong> with the same order number.
+    </p>
+
+    <button id="closePaymentInstructions" class="btn btn-primary btn-full">Done</button>
   </div>
 
   <!-- ===== CONFIRMATION MODAL ===== -->
@@ -326,7 +349,7 @@
     <div id="myOrdersList" class="my-orders-list"></div>
   </div>
 
-  <!-- ===== TRACK ORDER MODAL — no account needed, just order code + contact ===== -->
+  <!-- ===== TRACK ORDER MODAL — no account needed, just the order number ===== -->
   <div id="trackOrderOverlay" class="overlay"></div>
   <div id="trackOrderModal" class="modal modal-wide">
     <div class="modal-header">
@@ -335,8 +358,8 @@
     </div>
 
     <form id="trackOrderForm" class="stack-form">
-      <label>Contact number or email <span class="opt">(the one you used at checkout)</span>
-        <input type="text" id="trackOrderContact" required placeholder="09xx xxx xxxx or you@gmail.com" />
+      <label>Order number <span class="opt">(from your confirmation email, e.g. ORD-250920-AB12C)</span>
+        <input type="text" id="trackOrderCode" required placeholder="ORD-250920-AB12C" />
       </label>
       <p id="trackOrderError" class="form-error"></p>
       <button type="submit" class="btn btn-primary btn-full">Track Order</button>
@@ -366,6 +389,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="config.js"></script>
+  <script src="payment-config.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

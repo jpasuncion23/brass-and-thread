@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShopTrack — Driver</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;0,6..96,600;1,6..96,500&family=Jost:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== LOGIN ===== -->
+  <section id="loginScreen" class="login-screen">
+    <form id="loginForm" class="login-card">
+      <p class="kicker">Driver Access</p>
+      <h1>ShopTrack</h1>
+      <p class="login-sub">Mark COD orders Paid when you deliver them.</p>
+
+      <label>Email
+        <input type="email" id="loginEmail" autocomplete="username" required />
+      </label>
+      <label>Password
+        <input type="password" id="loginPass" autocomplete="current-password" required />
+      </label>
+
+      <p id="loginError" class="form-error"></p>
+
+      <button type="submit" id="loginBtn" class="btn btn-primary btn-full">Log In</button>
+      <p class="login-hint">
+        Use the driver account the shop owner created for you.
+      </p>
+    </form>
+  </section>
+
+  <!-- ===== DRIVER APP ===== -->
+  <div id="driverApp" class="driver-app hidden">
+    <header class="driver-header">
+      <div>
+        <p class="kicker">Out for Delivery</p>
+        <h1>COD Deliveries</h1>
+      </div>
+      <button id="logoutBtn" class="btn-outline">Log Out</button>
+    </header>
+
+    <p id="emptyState" class="empty-state hidden">No COD orders out for delivery right now.</p>
+
+    <div id="orderList" class="order-list"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

@@ -438,6 +438,8 @@ function openCheckout() {
 
   document.getElementById("checkoutError").textContent = "";
   document.getElementById("checkoutForm").reset();
+  document.getElementById("paymentMethod").value = "";
+  renderPaymentMethods();
 
   // Convenience only — a logged-in customer doesn't have to retype these.
   // Guests skip this entirely and the form just stays blank.
@@ -456,6 +458,34 @@ function closeCheckout() {
   document.getElementById("checkoutOverlay").classList.remove("show");
 }
 
+/* ---------------------------------------------------------------------
+   Payment method picker — clickable cards built from PAYMENT_METHODS
+   (site/payment-config.js), instead of a plain <select>. Selecting one
+   just stores its id in the hidden #paymentMethod input; whether it
+   needs a payment instructions page happens later, after the order is
+   actually placed (see handleCheckoutSubmit).
+   --------------------------------------------------------------------- */
+function renderPaymentMethods() {
+  const picker = document.getElementById("paymentMethodPicker");
+  const selected = document.getElementById("paymentMethod").value;
+
+  picker.innerHTML = PAYMENT_METHODS.map(
+    (m) => `
+      <button type="button" class="payment-method-card${m.id === selected ? " selected" : ""}" data-id="${m.id}">
+        <span class="payment-method-label">${m.label}</span>
+        <span class="payment-method-blurb">${m.blurb}</span>
+      </button>
+    `
+  ).join("");
+
+  picker.querySelectorAll(".payment-method-card").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.getElementById("paymentMethod").value = btn.dataset.id;
+      renderPaymentMethods();
+    });
+  });
+}
+
 function openConfirm(orderCode, total, paymentMethod, contactNumber, fullName) {
   document.getElementById("confirmText").textContent =
     `Thank you, ${fullName}! Order ${orderCode} — ${peso(total)} via ${paymentMethod}. ` +
@@ -466,6 +496,43 @@ function openConfirm(orderCode, total, paymentMethod, contactNumber, fullName) {
 function closeConfirm() {
   document.getElementById("confirmModal").classList.remove("show");
   document.getElementById("confirmOverlay").classList.remove("show");
+}
+
+/* ---------------------------------------------------------------------
+   Payment instructions page — shown instead of the plain confirmation
+   for any payment method with manualPayment: true (GCash, Bank
+   Transfer). No payment API: this just displays where to send the
+   money, using the order number as the reference. COD skips straight
+   to openConfirm() since there's nothing to pay yet.
+   --------------------------------------------------------------------- */
+function openPaymentInstructions(order, method) {
+  document.getElementById("piOrderCode").textContent = order.order_code;
+  document.getElementById("piOrderCodeInline").textContent = order.order_code;
+  document.getElementById("piTotal").textContent = peso(order.total);
+  document.getElementById("piMethodBlurb").textContent = method.blurb;
+
+  const qrWrap = document.getElementById("piQrWrap");
+  if (method.qrImage) {
+    document.getElementById("piQrImage").src = method.qrImage;
+    qrWrap.classList.remove("hidden");
+  } else {
+    qrWrap.classList.add("hidden");
+  }
+
+  const rows = [];
+  if (method.bankName) rows.push(["Bank", method.bankName]);
+  if (method.accountName) rows.push(["Account name", method.accountName]);
+  if (method.accountNumber) rows.push(["Account number", method.accountNumber]);
+  document.getElementById("piAccountDetails").innerHTML = rows
+    .map(([label, value]) => `<div class="row"><span>${label}</span><span>${value}</span></div>`)
+    .join("");
+
+  document.getElementById("paymentInstructionsModal").classList.add("show");
+  document.getElementById("paymentInstructionsOverlay").classList.add("show");
+}
+function closePaymentInstructions() {
+  document.getElementById("paymentInstructionsModal").classList.remove("show");
+  document.getElementById("paymentInstructionsOverlay").classList.remove("show");
 }
 
 /* ---------------------------------------------------------------------
@@ -527,7 +594,13 @@ async function handleCheckoutSubmit(e) {
   renderCart();
   await loadProducts();
   closeCheckout();
-  openConfirm(order.order_code, order.total, paymentMethod, contactNumber, fullName);
+
+  const method = PAYMENT_METHODS.find((m) => m.id === paymentMethod);
+  if (method && method.manualPayment) {
+    openPaymentInstructions(order, method);
+  } else {
+    openConfirm(order.order_code, order.total, paymentMethod, contactNumber, fullName);
+  }
 }
 
 function friendlyDbError(message) {
@@ -732,9 +805,9 @@ function closeMyOrders() {
 
 /* ---------------------------------------------------------------------
    Track My Order — no account needed. Looks up a single order by its
-   code plus the contact number or email given at checkout, via the
-   track_order() database function (see supabase-schema-track-order.sql)
-   so guest checkouts (the majority of orders) can still check status.
+   order number alone, via the track_order() database function (see
+   supabase-schema-track-order-code-only.sql), so guest checkouts (the
+   majority of orders) can still check status.
    --------------------------------------------------------------------- */
 function openTrackOrder() {
   document.getElementById("trackOrderForm").reset();
@@ -751,14 +824,14 @@ function closeTrackOrder() {
 
 async function handleTrackOrderSubmit(e) {
   e.preventDefault();
-  const contact = document.getElementById("trackOrderContact").value.trim();
+  const orderCode = document.getElementById("trackOrderCode").value.trim();
   const errorEl = document.getElementById("trackOrderError");
   const resultEl = document.getElementById("trackOrderResult");
 
   errorEl.textContent = "";
   resultEl.classList.add("hidden");
 
-  const { data, error } = await sb.rpc("track_order", { p_contact: contact });
+  const { data, error } = await sb.rpc("track_order", { p_order_code: orderCode });
 
   if (error) {
     errorEl.textContent = "Something went wrong — please try again.";
@@ -766,7 +839,7 @@ async function handleTrackOrderSubmit(e) {
   }
 
   if (!data || data.length === 0) {
-    errorEl.textContent = "No orders found for that contact info. Double-check it and try again.";
+    errorEl.textContent = "No order found with that order number. Double-check it and try again.";
     return;
   }
 
@@ -920,6 +993,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("closeConfirm").addEventListener("click", closeConfirm);
   document.getElementById("confirmOverlay").addEventListener("click", closeConfirm);
+
+  document.getElementById("closePaymentInstructions").addEventListener("click", closePaymentInstructions);
+  document.getElementById("paymentInstructionsOverlay").addEventListener("click", closePaymentInstructions);
 
   document.getElementById("accountBtn").addEventListener("click", toggleAccountMenu);
   document.getElementById("myOrdersBtn").addEventListener("click", openMyOrders);
