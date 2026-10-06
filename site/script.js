@@ -650,10 +650,41 @@ async function handleCheckoutSubmit(e) {
   closeCheckout();
 
   const method = PAYMENT_METHODS.find((m) => m.id === paymentMethod);
-  if (method && method.manualPayment) {
+
+  if (method && method.instantPayment) {
+    await startInstantPayment(order, contactNumber, fullName, fulfillmentMethod);
+  } else if (method && method.manualPayment) {
     openPaymentInstructions(order, method);
   } else {
     openConfirm(order.order_code, order.total, paymentMethod, contactNumber, fullName, fulfillmentMethod);
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Instant payment (GCash via PayMongo) — the order already exists
+   (Pending) at this point, same as any other method. This just asks
+   create-paymongo-source for a checkout link and sends the browser
+   there; the order only ever gets marked Paid by PayMongo's webhook
+   (supabase/functions/paymongo-webhook), never from this redirect alone.
+   --------------------------------------------------------------------- */
+async function startInstantPayment(order, contactNumber, fullName, fulfillmentMethod) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-paymongo-source`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_id: order.id }),
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.checkout_url) {
+      throw new Error(data.error || "Couldn't start GCash payment.");
+    }
+
+    window.location.href = data.checkout_url;
+  } catch (err) {
+    openConfirm(order.order_code, order.total, "GCash", contactNumber, fullName, fulfillmentMethod);
+    document.getElementById("confirmText").textContent +=
+      " We couldn't open GCash checkout just now — please message us using the contact number above so we can help you complete payment.";
   }
 }
 
@@ -1039,12 +1070,35 @@ function subscribeRealtime() {
 }
 
 /* ---------------------------------------------------------------------
-   Init
+   Returning from PayMongo's GCash checkout — this is UX only. The real
+   confirmation already happened (or is about to) via PayMongo's webhook
+   hitting paymongo-webhook server-side; this just tells the customer
+   what to expect instead of leaving them on a blank "thanks" page.
    --------------------------------------------------------------------- */
+function handlePaymongoReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const result = params.get("paymongo");
+  const orderCode = params.get("order");
+  if (!result) return;
+
+  document.getElementById("confirmText").textContent =
+    result === "success"
+      ? `Thanks! We're confirming your GCash payment for order ${orderCode || ""} now — this usually only takes a few seconds. ` +
+        `You can check its status anytime with "Track Order" using this order number.`
+      : `Your GCash payment for order ${orderCode || ""} didn't go through. The order itself is still saved — ` +
+        `use "Track Order" to find it again and you can message us to arrange another payment method.`;
+  document.getElementById("confirmModal").classList.add("show");
+  document.getElementById("confirmOverlay").classList.add("show");
+
+  // Drop the query string so refreshing/bookmarking doesn't re-show this.
+  window.history.replaceState({}, "", window.location.pathname);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   loadProducts();
   subscribeRealtime();
   initAuth();
+  handlePaymongoReturn();
 
   renderHeroSlides();
   restartHeroAutoplay();

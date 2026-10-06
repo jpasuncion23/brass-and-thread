@@ -389,6 +389,119 @@ order, walang contact number o email na hinihingi.
 
 ---
 
+## Update — PayMongo (GCash na automatic, totoong payment gateway na)
+
+Ito ang unang pagkakataon na may totoong payment API sa site mo. Dati,
+ang GCash ay "pay via GCash, i-type lang namin kung saan magpapadala" at
+ikaw/driver pa rin ang nagko-confirm nang manu-mano. Ngayon, pag pinili
+ng customer ang **GCash**, dadalhin sila sa totoong GCash checkout page
+ng PayMongo — at ang order ay automatic na mamarkahan **Paid** sa
+sandaling ma-confirm ni PayMongo na dumating na talaga ang bayad, walang
+sinuman (ikaw, driver, o customer) na kailangang gumawa ng kahit ano.
+
+**COD** at **Bank Transfer** ay pareho pa rin ng dati — walang API,
+manual. Ang GCash lang ang pumasok sa PayMongo.
+
+### Part 1 — Gumawa ng PayMongo account
+
+1. Pumunta sa **[dashboard.paymongo.com](https://dashboard.paymongo.com)** →
+   mag-sign up (libre, walang bayad hangga't walang successful na
+   transaction — may percentage fee per successful payment, tingnan sa
+   PayMongo pricing page).
+2. Sa simula, nasa **Test Mode** ka — perpekto ito para subukan muna
+   bago mag-live. May toggle sa dashboard pag ready ka na sa totoong
+   pera (kailangan muna ng KYC/business verification bago ma-enable ang
+   Live Mode — sundin ang hihingin ng PayMongo).
+3. Sidebar → **Developers → API Keys** → kopyahin ang **Secret Key**
+   (nagsisimula sa `sk_test_...` habang Test Mode ka). **HUWAG** ito
+   ipakita kahit saan sa browser/client code — Edge Function secret lang
+   dapat ito, kaya tatlo pa lang tayo papunta dito.
+
+### Part 2 — I-deploy ang dalawang bagong Edge Function
+
+1. Supabase dashboard → **Edge Functions → Create a new function** →
+   pangalanan **`create-paymongo-source`** (eksakto) → i-paste ang buong
+   content ng [supabase/functions/create-paymongo-source/index.ts](supabase/functions/create-paymongo-source/index.ts)
+   dito sa project mo → **i-OFF ang "Verify JWT"** → **Deploy**.
+2. Ulitin, pangalanan **`paymongo-webhook`** (eksakto) → i-paste ang
+   buong content ng [supabase/functions/paymongo-webhook/index.ts](supabase/functions/paymongo-webhook/index.ts) →
+   **i-OFF ang "Verify JWT"** → **Deploy**.
+3. **Edge Functions → Manage secrets**, idagdag:
+   - `PAYMONGO_SECRET_KEY` = yung Secret Key mula Part 1
+   - `SITE_URL` = yung totoong Netlify link mo, **walang trailing
+     slash** (hal. `https://xxxxx-xxxxx.netlify.app`)
+   - `PAYMONGO_WEBHOOK_SECRET` — kukunin mo pa lang ito sa Part 3, balik
+     ka dito pagkatapos.
+
+### Part 3 — I-configure ang webhook sa PayMongo
+
+1. Kopyahin ang URL ng na-deploy mo nang `paymongo-webhook` function
+   (makikita sa Edge Functions list sa Supabase, hal.
+   `https://<project-ref>.supabase.co/functions/v1/paymongo-webhook`).
+2. PayMongo dashboard → **Developers → Webhooks → Add an Endpoint**.
+3. I-paste yung URL, piliin ang dalawang events na ito LANG:
+   - `source.chargeable`
+   - `payment.paid`
+4. I-save, tapos kopyahin ang **Signing Secret** na ipinakita (minsan
+   kailangan i-click ang webhook entry para makita).
+5. Balik sa Supabase → **Edge Functions → Manage secrets**, idagdag:
+   - `PAYMONGO_WEBHOOK_SECRET` = yung Signing Secret mula step 4
+
+### Part 4 — I-run ang SQL
+
+1. Buksan ang [supabase-schema-paymongo.sql](supabase-schema-paymongo.sql),
+   copy lahat, paste sa **SQL Editor** → **Run**.
+2. I-deploy ang bagong `site` folder (naka-update na ang
+   `site/payment-config.js` at ang checkout flow).
+
+### Subukan (Test Mode)
+
+1. Mag-checkout sa storefront, piliin ang **GCash**, ₱100 pataas (ito
+   ang minimum ng PayMongo para sa GCash).
+2. Dapat madala ka sa PayMongo's test GCash checkout page. Gamitin ang
+   **test phone number/OTP na ibinigay ng PayMongo** sa Test Mode docs
+   nila (hindi totoong GCash account) para i-simulate ang successful
+   payment.
+3. Pagkatapos "magbayad," dapat ka ma-redirect balik sa storefront mo
+   na may lumalabas na "we're confirming your GCash payment" na
+   message.
+4. Sa ilang segundo, tignan sa admin Orders tab — dapat nagbago na sa
+   **Paid** ang order na iyon mismo, may toast notification pa.
+5. Kung walang nangyari: Supabase → **Edge Functions → paymongo-webhook
+   → Logs** at **create-paymongo-source → Logs** — makikita mo doon
+   kung saan nasablay (mali ba yung secret, URL, o events na pinili sa
+   PayMongo).
+
+**Paalala:** kapag ready ka na sa totoong pera, palitan ang
+`PAYMONGO_SECRET_KEY` at `PAYMONGO_WEBHOOK_SECRET` ng Live Mode
+versions nila (pagkatapos maaprubahan ang account mo ng PayMongo) — may
+sari-sarili palang Live webhook endpoint/signing secret ang PayMongo,
+kaya ulitin ang Part 3 para sa Live Mode.
+
+---
+
+## Update — Mas detalyadong status-update emails
+
+Dalawang pagbabago sa email na pinapadala pag nagbago ang status ng
+order (supabase-schema-order-email-trigger.sql):
+
+- Nakalista na rin ngayon ang **mga items sa order** (hindi lang order
+  number/status/total), para makita agad nila kung ano talaga ang
+  update na ito.
+- Para sa **Pickup** orders, nililaktawan na ang mga "paparating pa
+  lang" na update (Processing, Ready for Pickup) — minsan lang sila
+  mae-email: pagka-order (order confirmation, dati pa ito) at pag
+  **tapos na** (na-pick up/Delivered) o Cancelled. Para sa **Delivery**
+  orders, pareho pa rin ng dati — lahat ng stage may email.
+
+Kasama na ito sa update sa [supabase/functions/send-order-email/index.ts](supabase/functions/send-order-email/index.ts) —
+kung na-redeploy mo na ito as part of ibang update sa itaas, wala ka
+nang dagdag na gagawin. Kung hindi mo pa na-redeploy, i-copy ulit ang
+buong file papunta sa Edge Function mo (Part 2, Step 3 sa Update — Order
+Confirmation Email).
+
+---
+
 ## Paalala tungkol sa security
 
 - Ang **anon key** ay talagang OK na makita ng publiko sa code — ganito
@@ -398,7 +511,10 @@ order, walang contact number o email na hinihingi.
   orders ay kailangan ng admin login lang.
 - **HUWAG** kopyahin ang **`service_role`** key kung saan man — ito ang
   key na nag-bypass ng lahat ng security, dapat lang siya nasa server,
-  hindi sa isang website na binabasa ng browser.
+  hindi sa isang website na binabasa ng browser. (Ginagamit ito sa
+  loob ng `create-paymongo-source` at `paymongo-webhook`, pero
+  automatic na nailalagay ni Supabase yun — hindi mo na ito kailanman
+  kinopya/ipinaste mo kahit saan.)
 - Ang checkout (`place_order`) ay isang database function na tumatakbo
   sa loob ng isang transaction — dinodouble-check muna ang stock bago
   bawasan, kaya hindi mauubos ng dalawang customer ang parehong last unit

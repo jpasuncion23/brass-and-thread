@@ -110,7 +110,10 @@ function statusChangedHtml(order: any, message: string): string {
         <tr><td style="padding: 4px 0; color: #6b6355;">Order</td><td style="padding: 4px 0; text-align: right;"><strong>${order.order_code}</strong></td></tr>
         <tr><td style="padding: 4px 0; color: #6b6355;">Status</td><td style="padding: 4px 0; text-align: right;"><strong>${statusLabel(order.order_status, order.fulfillment_method)}</strong></td></tr>
         <tr><td style="padding: 4px 0; color: #6b6355;">Payment</td><td style="padding: 4px 0; text-align: right;"><strong>${order.payment_status}</strong></td></tr>
-        <tr><td style="padding: 4px 0; color: #6b6355;">Total</td><td style="padding: 4px 0; text-align: right;"><strong>₱${Number(order.total).toLocaleString("en-PH")}</strong></td></tr>
+      </table>
+      <table style="width: 100%; border-collapse: collapse; margin: 0 0 16px; border-top: 1px solid #e2d8c4; border-bottom: 1px solid #e2d8c4;">
+        ${itemsTableHtml(order.items)}
+        <tr><td style="padding: 8px 0 4px; font-weight: bold;">Total</td><td style="padding: 8px 0 4px; text-align: right; font-weight: bold;">₱${Number(order.total).toLocaleString("en-PH")}</td></tr>
       </table>
       <p style="color: #6b6355; font-size: 13px;">Questions about your order? Reply to this email or message us using the contact number you left at checkout.</p>
     </div>
@@ -167,6 +170,16 @@ Deno.serve(async (req: Request) => {
   const previous = payload.old_record;
   if (!previous || order.order_status === previous.order_status) {
     return new Response("No status change — nothing to send", { status: 200 });
+  }
+
+  // Pickup has no multi-day transit to narrate — skip the in-between
+  // stage emails (Processing, Ready for Pickup) and only email once it's
+  // actually done (Delivered/picked up) or Cancelled. Delivery keeps
+  // every stage, since that's the whole point of tracking it.
+  const isPickup = order.fulfillment_method === "Pickup";
+  const isIntermediateStage = order.order_status === "Processing" || order.order_status === "Out for Delivery";
+  if (isPickup && isIntermediateStage) {
+    return new Response("Pickup order — skipping intermediate stage email", { status: 200 });
   }
 
   const message = statusMessage(order.order_status, order.fulfillment_method);
