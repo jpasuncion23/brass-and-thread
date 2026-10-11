@@ -406,7 +406,7 @@
    // status filter applied), regardless of payment/fulfillment status.
    function exportOrdersCsv() {
      const filtered = getFilteredOrders();
-     const rows = [["Order Code", "Customer", "Contact", "Email", "Items", "Total", "Payment Method", "Payment Status", "Fulfillment Status", "Date"]];
+     const rows = [["Order Code", "Customer", "Contact", "Email", "Items", "Total", "Payment Method", "Payment Status", "Delivery/Pickup", "Fulfillment Status", "Date"]];
      filtered.forEach((o) => {
        rows.push([
          o.order_code,
@@ -417,7 +417,8 @@
          o.total,
          o.payment_method,
          o.payment_status,
-         o.order_status || "Pending",
+         o.fulfillment_method || "Delivery",
+         statusLabel(o.order_status || "Pending", o.fulfillment_method),
          formatDate(o.created_at),
        ]);
      });
@@ -750,14 +751,17 @@
    // Cancelled) are done and just kept for reference.
    const ACTIVE_STATUSES = ["Pending", "Processing", "Out for Delivery"];
    
-   // Search box + status dropdown above the Orders table — lets the admin
-   // quickly find one customer's order instead of scrolling the whole list.
+   // Search box + filters above the Orders table — lets the admin quickly
+   // find one customer's order, or narrow the list to just Pickup or just
+   // Delivery, instead of scrolling the whole list.
    function getFilteredOrders() {
      const term = (document.getElementById("orderSearchInput")?.value || "").trim().toLowerCase();
      const statusFilter = document.getElementById("orderStatusFilter")?.value || "";
-   
+     const fulfillmentFilter = document.getElementById("fulfillmentMethodFilter")?.value || "";
+
      return ORDERS.filter((o) => {
        if (statusFilter && (o.order_status || "Pending") !== statusFilter) return false;
+       if (fulfillmentFilter && (o.fulfillment_method || "Delivery") !== fulfillmentFilter) return false;
        if (!term) return true;
        const haystack = [o.order_code, o.full_name, o.contact_number, o.email]
          .filter(Boolean)
@@ -766,32 +770,32 @@
        return haystack.includes(term);
      });
    }
-   
+
    function renderOrders() {
      const body = document.querySelector("#ordersTable tbody");
-   
+
      if (ORDERS.length === 0) {
        body.innerHTML = `<tr class="empty-row"><td colspan="8">No orders yet.</td></tr>`;
        return;
      }
-   
+
      const filtered = getFilteredOrders();
-   
+
      if (filtered.length === 0) {
        body.innerHTML = `<tr class="empty-row"><td colspan="8">No orders match your search/filter.</td></tr>`;
        return;
      }
-   
-     // Active queue: first come, first served — the earliest unhandled
-     // order sits on top so the admin naturally works down the list in the
-     // order customers actually placed them.
-     const active = filtered.filter((o) => ACTIVE_STATUSES.includes(o.order_status || "Pending"))
-       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-   
-     // Completed orders: just a record now, most recently finished on top.
-     const completed = filtered.filter((o) => !ACTIVE_STATUSES.includes(o.order_status || "Pending"))
-       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-   
+
+     // Newest/oldest first, per the toolbar's sort control — sorted once
+     // here, then the active/completed split below just preserves it.
+     const sortOrder = document.getElementById("orderSortOrder")?.value || "desc";
+     const sorted = [...filtered].sort((a, b) =>
+       sortOrder === "asc" ? new Date(a.created_at) - new Date(b.created_at) : new Date(b.created_at) - new Date(a.created_at)
+     );
+
+     const active = sorted.filter((o) => ACTIVE_STATUSES.includes(o.order_status || "Pending"));
+     const completed = sorted.filter((o) => !ACTIVE_STATUSES.includes(o.order_status || "Pending"));
+
      const activeRows = active.map(orderRowHtml).join("");
      const divider = completed.length
        ? `<tr class="section-divider-row"><td colspan="8">Completed (Delivered / Cancelled)</td></tr>`
@@ -809,13 +813,18 @@
    }
    
    /* ---------------------------------------------------------------------
-      Fulfillment status — the shipping-stage tracking (Pending → Processing
-      → Out for Delivery → Delivered, or Cancelled), separate from whether
-      the order has been paid. New orders start at "Pending" — the admin's
-      signal that it hasn't been looked at yet — and move to "Processing"
-      once work on it actually begins.
+      Fulfillment status — the shipping-stage tracking, separate from
+      whether the order has been paid. New orders start at "Pending" —
+      the admin's signal that it hasn't been looked at yet.
+
+      Delivery keeps the full stage list (Pending → Processing → Out for
+      Delivery → Delivered, or Cancelled), since that's genuinely a
+      multi-day process worth narrating. Pickup is simplified to just
+      Pending → Delivered (picked up) or Cancelled — there's no transit
+      stage to track for something the customer collects in person.
       --------------------------------------------------------------------- */
-   const ORDER_STATUSES = ["Pending", "Processing", "Out for Delivery", "Delivered", "Cancelled"];
+   const ORDER_STATUSES_DELIVERY = ["Pending", "Processing", "Out for Delivery", "Delivered", "Cancelled"];
+   const ORDER_STATUSES_PICKUP = ["Pending", "Delivered", "Cancelled"];
 
    // The database always stores "Out for Delivery" regardless of
    // fulfillment method — this just relabels it "Ready for Pickup" in
@@ -835,7 +844,15 @@
 
    function fulfillmentSelect(order) {
      const current = order.order_status || "Pending";
-     const options = ORDER_STATUSES.map(
+     const isPickup = order.fulfillment_method === "Pickup";
+     let statuses = isPickup ? ORDER_STATUSES_PICKUP : ORDER_STATUSES_DELIVERY;
+     // Safety net: an older/edge-case order might already sit at a stage
+     // this shorter list doesn't offer (e.g. a Pickup order still at "Out
+     // for Delivery" from before this simplification) — keep it
+     // selectable so the dropdown never silently mismatches reality.
+     if (!statuses.includes(current)) statuses = [current, ...statuses];
+
+     const options = statuses.map(
        (s) => `<option value="${s}" ${s === current ? "selected" : ""}>${statusLabel(s, order.fulfillment_method)}</option>`
      ).join("");
      return `<select class="fulfillment-select fulfillment-${current.replace(/\s+/g, "-").toLowerCase()}" data-order-id="${order.id}">${options}</select>`;
@@ -1064,4 +1081,6 @@
    
      document.getElementById("orderSearchInput").addEventListener("input", renderOrders);
      document.getElementById("orderStatusFilter").addEventListener("change", renderOrders);
+     document.getElementById("fulfillmentMethodFilter").addEventListener("change", renderOrders);
+     document.getElementById("orderSortOrder").addEventListener("change", renderOrders);
    });
