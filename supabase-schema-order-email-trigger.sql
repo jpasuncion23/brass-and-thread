@@ -22,7 +22,7 @@ as $$
 begin
   if new.order_status is distinct from old.order_status then
     perform net.http_post(
-      url := 'https://oyujsqzueghivhjgmukn.supabase.co/functions/v1/dynamic-worker',
+      url := 'https://oyujsqzueghivhjgmukn.supabase.co/functions/v1/send-order-email',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
         'x-webhook-secret', 'bt-webhook-x7k2m9p4qz'
