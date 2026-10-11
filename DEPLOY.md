@@ -168,6 +168,14 @@ customer. Setup ito, may 4 na parte:
      `bt-webhook-8x2k9m` — sarili mong gawa, basta tandaan mo, gagamitin
      ulit sa Part 4)
 
+> **Mahalagang paalala:** ang "pangalan" na ilalagay mo sa Step 2 ay
+> **display label lang** — sa likod, bibigyan ng Supabase ang function
+> ng random na URL slug (hal. `smart-processor`, `dynamic-worker`),
+> hindi yung literal na "send-order-email". Pagkatapos i-deploy, buksan
+> ang function details page nito at **kopyahin ang totoong URL** na
+> nakalagay doon — ito yung gagamitin mo sa Part 4, HINDI yung
+> `/send-order-email`.
+
 ### Part 3 — Kunin ang Project Reference ID mo
 
 Settings → General → **Reference ID** (yung ID na ginamit mo na dati para
@@ -433,11 +441,24 @@ manual. Ang GCash lang ang pumasok sa PayMongo.
    - `PAYMONGO_WEBHOOK_SECRET` — kukunin mo pa lang ito sa Part 3, balik
      ka dito pagkatapos.
 
+> **Mahalagang paalala:** pag "Create a new function" → "Via Editor" ka
+> gumawa, **random na codename** (hal. `quick-worker`, `hyper-function`)
+> ang talagang URL slug ng function mo — hindi yung pangalan na type mo.
+> Ang "i-rename" na option sa dashboard ay **display label lang**,
+> hindi nito pinapalitan ang URL. Kaya pagkatapos i-deploy ang bawat
+> function, **buksan mo ang function details page nito at kopyahin ang
+> TOTOONG URL na nakalagay doon** (yung part pagkatapos ng
+> `/functions/v1/`) — kakailanganin mo ito sa Part 3 pati sa
+> [site/payment-config.js](site/payment-config.js) (`PAYMONGO_SOURCE_FUNCTION_SLUG`
+> sa dulo ng file, para sa `create-paymongo-source`).
+
 ### Part 3 — I-configure ang webhook sa PayMongo
 
-1. Kopyahin ang URL ng na-deploy mo nang `paymongo-webhook` function
-   (makikita sa Edge Functions list sa Supabase, hal.
-   `https://<project-ref>.supabase.co/functions/v1/paymongo-webhook`).
+1. Kopyahin ang **totoong URL** ng na-deploy mo nang `paymongo-webhook`
+   function — buksan ang function details page nito sa Supabase Edge
+   Functions list, kopyahin ang URL na nakalagay doon (maiiba ito sa
+   `/paymongo-webhook`, tingnan ang paalala sa itaas — hal. maaaring
+   `.../functions/v1/hyper-function` sa halip).
 2. PayMongo dashboard → **Developers → Webhooks → Add an Endpoint**.
 3. I-paste yung URL, piliin ang dalawang events na ito LANG:
    - `source.chargeable`

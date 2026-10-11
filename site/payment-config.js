@@ -52,3 +52,12 @@ const PICKUP_INFO = {
   address: "NU BALIWAG",
   hours: "(Mon–Sat, 10am–6pm)",
 };
+
+/* =========================================================================
+   EDIT ME — the real URL slug of the create-paymongo-source Edge
+   Function. Supabase assigns this randomly when you deploy a function
+   "Via Editor" — renaming it in the dashboard only changes its display
+   label, not this slug. Check Edge Functions → create-paymongo-source →
+   its URL (the part right after /functions/v1/) and paste that here.
+   ========================================================================= */
+const PAYMONGO_SOURCE_FUNCTION_SLUG = "quick-worker";

@@ -669,7 +669,7 @@ async function handleCheckoutSubmit(e) {
    --------------------------------------------------------------------- */
 async function startInstantPayment(order, contactNumber, fullName, fulfillmentMethod) {
   try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-paymongo-source`, {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/${PAYMONGO_SOURCE_FUNCTION_SLUG}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ order_id: order.id }),
