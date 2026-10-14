@@ -27,7 +27,9 @@
 import nodemailer from "npm:nodemailer@6.9.16";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET");
+// Trimmed: a newline pasted into the dashboard along with the value
+// (easy to do, invisible there) would otherwise reject every call.
+const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET")?.trim();
 
 // Gmail SMTP — the same thing PHPMailer does: send straight from the
 // shop's own Gmail, so mail lands like any normal Gmail message. Used
@@ -212,7 +214,7 @@ Deno.serve(async (req: Request) => {
   // Shared-secret check instead of Supabase's own JWT verification —
   // this function should be deployed with "Verify JWT" turned OFF,
   // since the triggers calling it aren't a logged-in browser session.
-  if (req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET) {
+  if (!WEBHOOK_SECRET || req.headers.get("x-webhook-secret")?.trim() !== WEBHOOK_SECRET) {
     console.error("Unauthorized — x-webhook-secret doesn't match the WEBHOOK_SECRET secret");
     return new Response("Unauthorized", { status: 401 });
   }
