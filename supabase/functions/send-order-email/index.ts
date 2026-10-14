@@ -4,7 +4,8 @@
 // Deploy this in Supabase Dashboard → Edge Functions → Create function
 // (or open the existing one) → paste this file's content → Deploy. Set
 // its secrets under Edge Functions → Manage secrets: WEBHOOK_SECRET, plus
-// either BREVO_API_KEY + SENDER_EMAIL (emails any customer) or
+// one way to send, tried in this order: GMAIL_USER + GMAIL_APP_PASSWORD
+// (the shop's own Gmail), BREVO_API_KEY + SENDER_EMAIL, or
 // RESEND_API_KEY (test sender — only reaches the Resend account owner).
 // See DEPLOY.md for the two database triggers that call this.
 //
@@ -23,11 +24,24 @@
 //      row> }.
 // =========================================================================
 
+import nodemailer from "npm:nodemailer@6.9.16";
+
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET");
 
-// Brevo (brevo.com) — used instead of Resend whenever both secrets are
-// set. Brevo can send to any customer from a single verified sender
+// Gmail SMTP — the same thing PHPMailer does: send straight from the
+// shop's own Gmail, so mail lands like any normal Gmail message. Used
+// first whenever both secrets are set:
+//   GMAIL_USER         — the Gmail address, e.g. brassthread@gmail.com
+//   GMAIL_APP_PASSWORD — myaccount.google.com/apppasswords (16 letters;
+//                        needs 2-Step Verification on). Not the normal
+//                        Gmail password.
+// Port 465 (implicit TLS) — Supabase blocks outgoing 25 and 587.
+const GMAIL_USER = Deno.env.get("GMAIL_USER")?.trim();
+const GMAIL_APP_PASSWORD = Deno.env.get("GMAIL_APP_PASSWORD")?.replace(/\s+/g, "");
+
+// Brevo (brevo.com) — used when Gmail isn't set up but both of these
+// are. Brevo can send to any customer from a single verified sender
 // address (e.g. the shop's Gmail), no domain of our own needed:
 //   BREVO_API_KEY — Brevo → SMTP & API → API Keys
 //   SENDER_EMAIL  — the address verified under Brevo → Senders
@@ -35,7 +49,7 @@ const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY")?.trim();
 const SENDER_EMAIL = Deno.env.get("SENDER_EMAIL")?.trim();
 const SENDER_NAME = "Brass & Thread";
 
-// Resend's shared test sender — the fallback when Brevo isn't set up.
+// Resend's shared test sender — the fallback when neither is set up.
 // Works with no domain setup, but Resend only delivers mail from it to
 // the Resend account owner's own address, never to other customers.
 const FROM_EMAIL = `${SENDER_NAME} <onboarding@resend.dev>`;
@@ -133,6 +147,23 @@ function statusChangedHtml(order: any, message: string): string {
 }
 
 async function sendEmail(to: string, subject: string, html: string) {
+  if (GMAIL_USER && GMAIL_APP_PASSWORD) {
+    try {
+      const transport = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+      });
+      await transport.sendMail({ from: `"${SENDER_NAME}" <${GMAIL_USER}>`, to, subject, html });
+    } catch (err) {
+      console.error("Gmail SMTP error:", err instanceof Error ? err.message : err);
+      return new Response("Gmail SMTP error", { status: 502 });
+    }
+    console.log("Email sent via Gmail:", subject);
+    return new Response("sent", { status: 200 });
+  }
+
   if (BREVO_API_KEY && SENDER_EMAIL) {
     const res = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
