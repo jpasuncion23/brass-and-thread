@@ -1,1265 +1,1091 @@
 /* =========================================================================
-   Brass & Thread — Storefront (Supabase-backed)
+   ShopTrack — Admin Dashboard (Supabase-backed)
    ---------------------------------------------------------------------
-   Real backend: products/orders live in a hosted Postgres database
-   (Supabase). Checkout calls the place_order() database function, which
-   re-checks stock and deducts it inside one atomic transaction — see
-   supabase-schema.sql for exactly how the race condition described in
-   the paper (two customers, one last unit) is handled server-side.
+   Real auth: Supabase Auth session (the admin user you create in
+   Supabase → Authentication → Users). Row Level Security only allows a
+   logged-in ("authenticated") session to write to products/orders —
+   see supabase-schema.sql. supabase-js keeps the session itself
+   (stored under its own localStorage key), so refreshing the page
+   keeps you logged in until you explicitly log out.
    ========================================================================= */
 
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-const LOW_STOCK_THRESHOLD = 3;
-const CART_KEY = "bt_cart"; // sessionStorage — guest cart, resets per browser session
-
-let PRODUCTS = []; // local cache of the last fetch, refreshed on load + realtime events
-
-function peso(n) {
-  return "₱" + Number(n).toLocaleString("en-PH");
-}
-
-/* ---------------------------------------------------------------------
-   Hero carousel — no product photography yet, so each slide is a
-   CSS-built backdrop (see .hero-slide in style.css) tinted per slide,
-   with its own headline. Swap in real photos later by setting each
-   slide's background-image inline here once you have them.
-   --------------------------------------------------------------------- */
-const HERO_SLIDES = [
-  {
-    kicker: "Manifest No. 004 · Limited Batch",
-    headline: "What's left<br />is what's left.",
-    sub: "Every shirt here is factory overrun — extra units and surplus lots that already exist, sold off before they go to waste. Once a size or print sells out, that exact batch usually isn't coming back.",
-    colorA: "#f9f0e2",
-    colorB: "#f0d9ae",
-    video: "/videos/hero-loop.mp4",
-  },
-  {
-    kicker: "Optional Account",
-    headline: "Order as a guest.<br />Or save your info.",
-    sub: "Check out with just your name, contact number, and how you'll pay — no account required. Prefer to save your details for next time? That's here too, totally optional.",
-    colorA: "#eef2e6",
-    colorB: "#dbe6c9",
-    image: "/images/brooklyn-tee.jpg",
-  },
-  {
-    kicker: "Live Stock Count",
-    headline: "What you see<br />is what's on the shelf.",
-    sub: "The stock count on every card is the same number the owner sees on the ShopTrack dashboard — updated the moment an order comes in.",
-    colorA: "#faece0",
-    colorB: "#f0cba0",
-    image: "/images/toyota-tee.jpg",
-  },
-];
-
-let heroIndex = 0;
-let heroTimer = null;
-
-function renderHeroSlides() {
-  const slidesEl = document.getElementById("heroSlides");
-  const dotsEl = document.getElementById("heroDots");
-
-  slidesEl.innerHTML = HERO_SLIDES.map((s, i) => {
-    let media = "";
-    if (s.video) {
-      media = `<video src="${s.video}" autoplay muted loop playsinline></video>`;
-    } else if (s.image) {
-      media = `<img src="${s.image}" alt="" />`;
-    }
-    return `<div class="hero-slide${i === 0 ? " active" : ""}" style="--slide-a:${s.colorA}; --slide-b:${s.colorB}">${media}</div>`;
-  }).join("");
-
-  dotsEl.innerHTML = HERO_SLIDES.map(
-    (_, i) => `<button data-index="${i}" class="${i === 0 ? "active" : ""}" aria-label="Slide ${i + 1}"></button>`
-  ).join("");
-
-  dotsEl.querySelectorAll("button").forEach((btn) => {
-    btn.addEventListener("click", () => goToHeroSlide(Number(btn.dataset.index)));
-  });
-
-  updateHeroText();
-}
-
-function updateHeroText() {
-  const slide = HERO_SLIDES[heroIndex];
-  document.getElementById("heroKicker").textContent = slide.kicker;
-  document.getElementById("heroHeadline").innerHTML = slide.headline;
-  document.getElementById("heroSub").textContent = slide.sub;
-
-  document.querySelectorAll(".hero-slide").forEach((el, i) => el.classList.toggle("active", i === heroIndex));
-  document.querySelectorAll("#heroDots button").forEach((el, i) => el.classList.toggle("active", i === heroIndex));
-}
-
-function goToHeroSlide(index) {
-  heroIndex = (index + HERO_SLIDES.length) % HERO_SLIDES.length;
-  updateHeroText();
-  restartHeroAutoplay();
-}
-
-function restartHeroAutoplay() {
-  clearInterval(heroTimer);
-  heroTimer = setInterval(() => goToHeroSlide(heroIndex + 1), 6000);
-}
-
-/* ---------------------------------------------------------------------
-   Navbar — transparent over the hero, solid once you scroll past it
-   --------------------------------------------------------------------- */
-function initNavbarScroll() {
-  const navbar = document.getElementById("navbar");
-  const hero = document.querySelector(".hero");
-
-  const observer = new IntersectionObserver(
-    ([entry]) => navbar.classList.toggle("scrolled", !entry.isIntersecting),
-    { threshold: 0, rootMargin: "-72px 0px 0px 0px" }
-  );
-  observer.observe(hero);
-}
-
-/* ---------------------------------------------------------------------
-   Chat widget — a lightweight contact popover (no live-chat backend)
-   --------------------------------------------------------------------- */
-function initChatWidget() {
-  const bubble = document.getElementById("chatBubble");
-  const popover = document.getElementById("chatPopover");
-
-  bubble.addEventListener("click", () => popover.classList.toggle("show"));
-  document.addEventListener("click", (e) => {
-    if (!popover.contains(e.target) && e.target !== bubble) popover.classList.remove("show");
-  });
-}
-
-/* ---------------------------------------------------------------------
-   Cart (client-side only until checkout — no stock is touched yet)
-   --------------------------------------------------------------------- */
-function getCart() {
-  return JSON.parse(sessionStorage.getItem(CART_KEY) || "{}"); // { productId: qty }
-}
-function saveCart(cart) {
-  sessionStorage.setItem(CART_KEY, JSON.stringify(cart));
-}
-
-/* ---------------------------------------------------------------------
-   Fetch + render products
-   --------------------------------------------------------------------- */
-async function loadProducts() {
-  const { data, error } = await sb.from("products").select("*").order("name");
-  const loadState = document.getElementById("loadState");
-
-  if (error) {
-    loadState.textContent = "Couldn't load stock — check your config.js / internet connection.";
-    console.error(error);
-    return;
-  }
-
-  PRODUCTS = data;
-  loadState.classList.add("hidden");
-  renderProducts();
-  renderCart(); // in case stock changed under an item already in cart
-
-  // Quick View might be open when a realtime stock update comes in —
-  // keep its size picker honest instead of showing stale numbers.
-  if (quickViewGroup && document.getElementById("quickViewModal").classList.contains("show")) {
-    const fresh = groupProducts().find((g) => g.key === quickViewGroup.key);
-    if (fresh) {
-      quickViewGroup = fresh;
-      renderQuickViewSizes();
-    } else {
-      closeQuickView();
-    }
-  }
-}
-
-/* ---------------------------------------------------------------------
-   Grouping — each size of the same shirt/color is its own row in the
-   products table (own stock, own id), but customers shouldn't have to
-   hunt through separate cards for "Graphic Tee, Black, S" vs "...M" vs
-   "...L". One card per name+color; sizes are chosen in the Quick View
-   modal (see openQuickView below).
-   --------------------------------------------------------------------- */
-const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
-
-function sortSizes(sizes) {
-  return sizes.sort((a, b) => {
-    const ai = SIZE_ORDER.indexOf(a.size.toUpperCase());
-    const bi = SIZE_ORDER.indexOf(b.size.toUpperCase());
-    if (ai !== -1 && bi !== -1) return ai - bi;
-    if (ai !== -1) return -1;
-    if (bi !== -1) return 1;
-    return a.size.localeCompare(b.size);
-  });
-}
-
-function groupProducts() {
-  const groups = new Map();
-
-  PRODUCTS.forEach((p) => {
-    const key = p.name + "||" + p.color;
-    if (!groups.has(key)) {
-      groups.set(key, { key, name: p.name, color: p.color, image_url: null, sizes: [] });
-    }
-    const g = groups.get(key);
-    g.sizes.push(p);
-    if (!g.image_url && p.image_url) g.image_url = p.image_url;
-  });
-
-  return Array.from(groups.values()).map((g) => {
-    sortSizes(g.sizes);
-    const totalStock = g.sizes.reduce((sum, s) => sum + s.stock, 0);
-    return { ...g, totalStock, soldOut: totalStock <= 0, price: g.sizes[0].price };
-  });
-}
-
-function renderProducts() {
-  const grid = document.getElementById("productGrid");
-  grid.innerHTML = "";
-
-  groupProducts().forEach((g) => {
-    const low = !g.soldOut && g.totalStock <= LOW_STOCK_THRESHOLD;
-    const pillClass = g.soldOut ? "out" : low ? "low" : "";
-    const pillText = g.soldOut ? "Sold Out" : `${g.totalStock} left`;
-    const sizeCount = g.sizes.length;
-
-    const card = document.createElement("div");
-    card.className = "product-card" + (g.soldOut ? "" : " clickable");
-    card.innerHTML = `
-      <div class="product-photo">
-        ${g.image_url ? `<img src="${g.image_url}" alt="${g.name}" loading="lazy" />` : `<span class="product-photo-placeholder">👕</span>`}
-      </div>
-      <span class="stock-pill ${pillClass}">${pillText}</span>
-      <h3>${g.name}</h3>
-      <div class="tag-divider"></div>
-      <p class="product-meta">${g.color} · ${sizeCount} size${sizeCount > 1 ? "s" : ""}</p>
-      <p class="product-price">${peso(g.price)}</p>
-      <button class="btn btn-primary choose-size-btn" ${g.soldOut ? "disabled" : ""}>
-        ${g.soldOut ? "Sold Out" : "Choose Size"}
-      </button>
-    `;
-    if (!g.soldOut) {
-      card.addEventListener("click", () => openQuickView(g.key));
-    }
-    grid.appendChild(card);
-  });
-}
-
-/* ---------------------------------------------------------------------
-   Quick View — pick a size (and see that size's own stock) before it
-   actually goes in the cart. Opened by clicking a product card.
-   --------------------------------------------------------------------- */
-let quickViewGroup = null;
-let quickViewSelectedId = null;
-
-function openQuickView(key) {
-  const group = groupProducts().find((g) => g.key === key);
-  if (!group) return;
-
-  quickViewGroup = group;
-  const firstAvailable = group.sizes.find((s) => s.stock > 0) || group.sizes[0];
-  quickViewSelectedId = firstAvailable.id;
-
-  document.getElementById("qvName").textContent = group.name;
-  document.getElementById("qvPhoto").innerHTML = group.image_url
-    ? `<img src="${group.image_url}" alt="${group.name}" />`
-    : `<span class="product-photo-placeholder">👕</span>`;
-  document.getElementById("qvMeta").textContent = group.color;
-  document.getElementById("qvPrice").textContent = peso(group.price);
-
-  renderQuickViewSizes();
-
-  document.getElementById("quickViewModal").classList.add("show");
-  document.getElementById("quickViewOverlay").classList.add("show");
-}
-
-function renderQuickViewSizes() {
-  const picker = document.getElementById("qvSizePicker");
-
-  picker.innerHTML = quickViewGroup.sizes
-    .map((s) => {
-      const soldOut = s.stock <= 0;
-      const selected = s.id === quickViewSelectedId;
-      return `<button type="button" class="size-pill${selected ? " selected" : ""}" data-id="${s.id}" ${soldOut ? "disabled" : ""}>${s.size}</button>`;
-    })
-    .join("");
-
-  picker.querySelectorAll(".size-pill").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      quickViewSelectedId = btn.dataset.id;
-      renderQuickViewSizes();
-    });
-  });
-
-  updateQuickViewStockNote();
-}
-
-function updateQuickViewStockNote() {
-  const selected = quickViewGroup.sizes.find((s) => s.id === quickViewSelectedId);
-  const note = document.getElementById("qvStockNote");
-  const addBtn = document.getElementById("qvAddToCartBtn");
-
-  if (!selected || selected.stock <= 0) {
-    note.textContent = "Sold out in this size.";
-    addBtn.disabled = true;
-    return;
-  }
-
-  const low = selected.stock <= LOW_STOCK_THRESHOLD;
-  note.textContent = low ? `Only ${selected.stock} left in this size.` : `${selected.stock} in stock.`;
-  addBtn.disabled = false;
-}
-
-function closeQuickView() {
-  document.getElementById("quickViewModal").classList.remove("show");
-  document.getElementById("quickViewOverlay").classList.remove("show");
-  quickViewGroup = null;
-  quickViewSelectedId = null;
-}
-
-function handleQuickViewAddToCart() {
-  if (!quickViewSelectedId) return;
-  addToCart(quickViewSelectedId);
-  closeQuickView();
-}
-
-function addToCart(productId) {
-  const product = PRODUCTS.find((p) => p.id === productId);
-  if (!product) return;
-
-  const cart = getCart();
-  const currentQty = cart[productId] || 0;
-
-  if (currentQty + 1 > product.stock) {
-    alert(`Sorry, "${product.name}" (${product.size}/${product.color}) only has ${product.stock} left in stock.`);
-    return;
-  }
-
-  cart[productId] = currentQty + 1;
-  saveCart(cart);
-  renderCart();
-  openCart();
-}
-
-function renderCart() {
-  const cart = getCart();
-  const container = document.getElementById("cartItems");
-  const totalEl = document.getElementById("cartTotal");
-  const countEl = document.getElementById("cartCount");
-  const checkoutBtn = document.getElementById("checkoutBtn");
-
-  const entries = Object.entries(cart).filter(([, qty]) => qty > 0);
-  let total = 0;
-  let itemCount = 0;
-
-  if (entries.length === 0) {
-    container.innerHTML = `<p class="cart-empty">Your cart is empty.</p>`;
-  } else {
-    container.innerHTML = "";
-    entries.forEach(([id, qty]) => {
-      const product = PRODUCTS.find((p) => p.id === id);
-      if (!product) return;
-
-      total += product.price * qty;
-      itemCount += qty;
-
-      const row = document.createElement("div");
-      row.className = "cart-item";
-      row.innerHTML = `
-        <div class="cart-item-info">
-          <div class="name">${product.name}</div>
-          <div class="meta">${product.size} / ${product.color} · ${peso(product.price)}</div>
-          <div class="qty-controls">
-            <button data-action="dec" data-id="${product.id}">−</button>
-            <span>${qty}</span>
-            <button data-action="inc" data-id="${product.id}">+</button>
-          </div>
-        </div>
-        <button class="cart-item-remove" data-action="remove" data-id="${product.id}">Remove</button>
-      `;
-      container.appendChild(row);
-    });
-  }
-
-  totalEl.textContent = peso(total);
-  countEl.textContent = itemCount;
-  checkoutBtn.disabled = itemCount === 0;
-
-  container.querySelectorAll("[data-action]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.id;
-      const action = btn.dataset.action;
-      const cart = getCart();
-      const product = PRODUCTS.find((p) => p.id === id);
-
-      if (action === "inc") {
-        if (product && (cart[id] || 0) + 1 > product.stock) {
-          alert(`Only ${product.stock} left in stock.`);
-          return;
-        }
-        cart[id] = (cart[id] || 0) + 1;
-      } else if (action === "dec") {
-        cart[id] = Math.max(0, (cart[id] || 0) - 1);
-      } else if (action === "remove") {
-        delete cart[id];
-      }
-
-      saveCart(cart);
-      renderCart();
-    });
-  });
-}
-
-/* ---------------------------------------------------------------------
-   Cart drawer + modals
-   --------------------------------------------------------------------- */
-function openCart() {
-  document.getElementById("cartDrawer").classList.add("open");
-  document.getElementById("cartOverlay").classList.add("show");
-}
-function closeCart() {
-  document.getElementById("cartDrawer").classList.remove("open");
-  document.getElementById("cartOverlay").classList.remove("show");
-}
-
-function openCheckout() {
-  const cart = getCart();
-  const entries = Object.entries(cart).filter(([, qty]) => qty > 0);
-  if (entries.length === 0) return;
-
-  const summary = document.getElementById("checkoutSummary");
-  let total = 0;
-  summary.innerHTML =
-    entries
-      .map(([id, qty]) => {
-        const p = PRODUCTS.find((pr) => pr.id === id);
-        if (!p) return "";
-        const lineTotal = p.price * qty;
-        total += lineTotal;
-        return `<div class="row"><span>${p.name} (${p.size}/${p.color}) × ${qty}</span><span>${peso(lineTotal)}</span></div>`;
-      })
-      .join("") + `<div class="row total"><span>Total</span><span>${peso(total)}</span></div>`;
-
-  document.getElementById("checkoutError").textContent = "";
-  document.getElementById("checkoutForm").reset();
-  document.getElementById("paymentMethod").value = "";
-  renderPaymentMethods();
-  document.getElementById("fulfillmentMethod").value = "Delivery";
-  renderFulfillmentMethods();
-
-  // Convenience only — a logged-in customer doesn't have to retype these.
-  // Guests skip this entirely and the form just stays blank.
-  if (CURRENT_USER) {
-    document.getElementById("fullName").value = CURRENT_USER.user_metadata?.full_name || "";
-    document.getElementById("email").value = CURRENT_USER.email || "";
-  }
-
-  closeCart();
-  document.getElementById("checkoutModal").classList.add("show");
-  document.getElementById("checkoutOverlay").classList.add("show");
-}
-
-function closeCheckout() {
-  document.getElementById("checkoutModal").classList.remove("show");
-  document.getElementById("checkoutOverlay").classList.remove("show");
-}
-
-/* ---------------------------------------------------------------------
-   Payment method picker — clickable cards built from PAYMENT_METHODS
-   (site/payment-config.js), instead of a plain <select>. Selecting one
-   just stores its id in the hidden #paymentMethod input; whether it
-   needs a payment instructions page happens later, after the order is
-   actually placed (see handleCheckoutSubmit).
-   --------------------------------------------------------------------- */
-function renderPaymentMethods() {
-  const picker = document.getElementById("paymentMethodPicker");
-  const selected = document.getElementById("paymentMethod").value;
-
-  picker.innerHTML = PAYMENT_METHODS.map(
-    (m) => `
-      <button type="button" class="payment-method-card${m.id === selected ? " selected" : ""}" data-id="${m.id}">
-        <span class="payment-method-label">${m.label}</span>
-        <span class="payment-method-blurb">${m.blurb}</span>
-      </button>
-    `
-  ).join("");
-
-  picker.querySelectorAll(".payment-method-card").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.getElementById("paymentMethod").value = btn.dataset.id;
-      renderPaymentMethods();
-    });
-  });
-}
-
-/* ---------------------------------------------------------------------
-   Delivery/pickup picker — same clickable-card pattern as payment
-   method. Toggles the delivery address field and a pickup-location note
-   (from PICKUP_INFO in site/payment-config.js) depending on the choice.
-   --------------------------------------------------------------------- */
-const FULFILLMENT_METHODS = [
-  { id: "Delivery", label: "Delivery", blurb: "We deliver to your address." },
-  { id: "Pickup", label: "Pickup", blurb: "You collect it in person — no delivery." },
-];
-
-function renderFulfillmentMethods() {
-  const picker = document.getElementById("fulfillmentMethodPicker");
-  const selected = document.getElementById("fulfillmentMethod").value;
-
-  picker.innerHTML = FULFILLMENT_METHODS.map(
-    (m) => `
-      <button type="button" class="payment-method-card${m.id === selected ? " selected" : ""}" data-id="${m.id}">
-        <span class="payment-method-label">${m.label}</span>
-        <span class="payment-method-blurb">${m.blurb}</span>
-      </button>
-    `
-  ).join("");
-
-  picker.querySelectorAll(".payment-method-card").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.getElementById("fulfillmentMethod").value = btn.dataset.id;
-      renderFulfillmentMethods();
-      updateFulfillmentFields();
-    });
-  });
-
-  updateFulfillmentFields();
-}
-
-function updateFulfillmentFields() {
-  const isPickup = document.getElementById("fulfillmentMethod").value === "Pickup";
-  document.getElementById("addressLabel").classList.toggle("hidden", isPickup);
-
-  const note = document.getElementById("pickupNote");
-  if (isPickup) {
-    note.textContent = `Pickup at: ${PICKUP_INFO.address} — ${PICKUP_INFO.hours}`;
-    note.classList.remove("hidden");
-  } else {
-    note.classList.add("hidden");
-  }
-}
-
-function openConfirm(orderCode, total, paymentMethod, contactNumber, fullName, fulfillmentMethod) {
-  const arrangementText =
-    fulfillmentMethod === "Pickup"
-      ? `We'll reach out at ${contactNumber} to confirm your pickup.`
-      : `We'll reach out at ${contactNumber} to arrange delivery.`;
-  document.getElementById("confirmText").textContent =
-    `Thank you, ${fullName}! Order ${orderCode} — ${peso(total)} via ${paymentMethod}. ` + arrangementText;
-  document.getElementById("confirmModal").classList.add("show");
-  document.getElementById("confirmOverlay").classList.add("show");
-}
-function closeConfirm() {
-  document.getElementById("confirmModal").classList.remove("show");
-  document.getElementById("confirmOverlay").classList.remove("show");
-}
-
-/* ---------------------------------------------------------------------
-   Payment instructions page — shown instead of the plain confirmation
-   for any payment method with manualPayment: true (GCash, Bank
-   Transfer). No payment API: this just displays where to send the
-   money, using the order number as the reference. COD skips straight
-   to openConfirm() since there's nothing to pay yet.
-   --------------------------------------------------------------------- */
-function openPaymentInstructions(order, method) {
-  document.getElementById("piOrderCode").textContent = order.order_code;
-  document.getElementById("piOrderCodeInline").textContent = order.order_code;
-  document.getElementById("piTotal").textContent = peso(order.total);
-  document.getElementById("piMethodBlurb").textContent = method.blurb;
-
-  const qrWrap = document.getElementById("piQrWrap");
-  if (method.qrImage) {
-    document.getElementById("piQrImage").src = method.qrImage;
-    qrWrap.classList.remove("hidden");
-  } else {
-    qrWrap.classList.add("hidden");
-  }
-
-  const rows = [];
-  if (method.bankName) rows.push(["Bank", method.bankName]);
-  if (method.accountName) rows.push(["Account name", method.accountName]);
-  if (method.accountNumber) rows.push(["Account number", method.accountNumber]);
-  document.getElementById("piAccountDetails").innerHTML = rows
-    .map(([label, value]) => `<div class="row"><span>${label}</span><span>${value}</span></div>`)
-    .join("");
-
-  document.getElementById("paymentInstructionsModal").classList.add("show");
-  document.getElementById("paymentInstructionsOverlay").classList.add("show");
-}
-function closePaymentInstructions() {
-  document.getElementById("paymentInstructionsModal").classList.remove("show");
-  document.getElementById("paymentInstructionsOverlay").classList.remove("show");
-}
-
-/* ---------------------------------------------------------------------
-   Checkout — calls the place_order() database function
-   --------------------------------------------------------------------- */
-async function handleCheckoutSubmit(e) {
-  e.preventDefault();
-
-  const cart = getCart();
-  const entries = Object.entries(cart).filter(([, qty]) => qty > 0);
-  const errorEl = document.getElementById("checkoutError");
-  const submitBtn = document.getElementById("placeOrderBtn");
-
-  if (entries.length === 0) {
-    errorEl.textContent = "Your cart is empty.";
-    return;
-  }
-
-  const fullName = document.getElementById("fullName").value.trim();
-  const contactNumber = document.getElementById("contactNumber").value.trim();
-  const email = document.getElementById("email").value.trim();
-  const address = document.getElementById("address").value.trim();
-  const paymentMethod = document.getElementById("paymentMethod").value;
-  const fulfillmentMethod = document.getElementById("fulfillmentMethod").value;
-  const orderNotes = document.getElementById("orderNotes").value.trim();
-
-  if (!fullName || !contactNumber || !email || !paymentMethod || !fulfillmentMethod) {
-    errorEl.textContent = "Please fill out all required fields.";
-    return;
-  }
-
-  const items = entries.map(([productId, qty]) => ({ product_id: productId, qty }));
-
-  submitBtn.disabled = true;
-  submitBtn.textContent = "Placing order…";
-  errorEl.textContent = "";
-
-  const { data: order, error } = await sb.rpc("place_order", {
-    p_items: items,
-    p_full_name: fullName,
-    p_contact_number: contactNumber,
-    p_email: email,
-    p_address: address,
-    p_payment_method: paymentMethod,
-    p_order_notes: orderNotes,
-    p_fulfillment_method: fulfillmentMethod,
-  });
-
-  submitBtn.disabled = false;
-  submitBtn.textContent = "Place Order";
-
-  if (error) {
-    // The database re-checked stock and something no longer fits —
-    // this is Section 4 Step 2 of the paper in action.
-    errorEl.textContent = friendlyDbError(error.message);
-    await loadProducts();
-    return;
-  }
-
-  saveCart({});
-  renderCart();
-  await loadProducts();
-  closeCheckout();
-
-  const method = PAYMENT_METHODS.find((m) => m.id === paymentMethod);
-
-  if (method && method.instantPayment) {
-    await startInstantPayment(order, contactNumber, fullName, fulfillmentMethod);
-  } else if (method && method.manualPayment) {
-    openPaymentInstructions(order, method);
-  } else {
-    openConfirm(order.order_code, order.total, paymentMethod, contactNumber, fullName, fulfillmentMethod);
-  }
-}
-
-/* ---------------------------------------------------------------------
-   Instant payment (GCash via PayMongo) — the order already exists
-   (Pending) at this point, same as any other method. This just asks
-   create-paymongo-source for a checkout link and sends the browser
-   there; the order only ever gets marked Paid by PayMongo's webhook
-   (supabase/functions/paymongo-webhook), never from this redirect alone.
-   --------------------------------------------------------------------- */
-async function startInstantPayment(order, contactNumber, fullName, fulfillmentMethod) {
-  try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/${PAYMONGO_SOURCE_FUNCTION_SLUG}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order_id: order.id }),
-    });
-    const data = await res.json();
-
-    if (!res.ok || !data.checkout_url) {
-      throw Object.assign(new Error(data.error || "Couldn't start GCash payment."), { fromServer: true });
-    }
-
-    window.location.href = data.checkout_url;
-  } catch (err) {
-    console.error("GCash checkout failed:", err);
-    // Server errors (e.g. the ₱100 minimum) are written for customers —
-    // show them as-is; network failures get the generic message.
-    const reason = err.fromServer ? ` ${err.message}` : " We couldn't open GCash checkout just now.";
-    openConfirm(order.order_code, order.total, "GCash", contactNumber, fullName, fulfillmentMethod);
-    document.getElementById("confirmText").textContent +=
-      `${reason} Please message us using the contact number above so we can help you complete payment.`;
-  }
-}
-
-function friendlyDbError(message) {
-  if (message.includes("INSUFFICIENT_STOCK")) {
-    return "Sorry, an item in your cart ran out of stock before you submitted. Please check your cart again.";
-  }
-  if (message.includes("MISSING_FIELDS")) {
-    return "Please fill out all required fields.";
-  }
-  if (message.includes("CART_EMPTY")) {
-    return "Your cart is empty.";
-  }
-  return "Couldn't place the order — please try again. (" + message + ")";
-}
-
-/* ---------------------------------------------------------------------
-   Optional customer account — guest checkout works with or without one.
-   Logging in just tags future orders to the account (so "My Orders"
-   works) and prefills the checkout form.
-   --------------------------------------------------------------------- */
-let CURRENT_USER = null; // Supabase auth user object, or null if guest
-let authMode = "login"; // "login" | "signup"
-
-function setAuthMode(mode) {
-  authMode = mode;
-  const isSignup = mode === "signup";
-  document.getElementById("authModalTitle").textContent = isSignup ? "Register Your Account" : "Log In";
-  document.getElementById("authNameRow").classList.toggle("hidden", !isSignup);
-  document.getElementById("authSwitchText").textContent = isSignup ? "Already have an account?" : "Don't have an account?";
-  document.getElementById("authSwitchBtn").textContent = isSignup ? "Log In" : "Sign Up";
-  document.getElementById("forgotPasswordBtn").classList.toggle("hidden", isSignup);
-  document.getElementById("authError").textContent = "";
-}
-
-function openAuth() {
-  document.getElementById("authForm").reset();
-  setAuthMode("login");
-  document.getElementById("authModal").classList.add("show");
-  document.getElementById("authOverlay").classList.add("show");
-}
-function closeAuth() {
-  document.getElementById("authModal").classList.remove("show");
-  document.getElementById("authOverlay").classList.remove("show");
-}
-
-async function handleAuthSubmit(e) {
-  e.preventDefault();
-  const email = document.getElementById("authEmail").value.trim();
-  const password = document.getElementById("authPassword").value;
-  const firstName = document.getElementById("authFirstName").value.trim();
-  const lastName = document.getElementById("authLastName").value.trim();
-  const fullName = [firstName, lastName].filter(Boolean).join(" ");
-  const errorEl = document.getElementById("authError");
-  const btn = document.getElementById("authSubmitBtn");
-
-  btn.disabled = true;
-  errorEl.textContent = "";
-
-  const { data, error } =
-    authMode === "signup"
-      ? await sb.auth.signUp({
-          email,
-          password,
-          options: { data: { first_name: firstName, last_name: lastName, full_name: fullName } },
-        })
-      : await sb.auth.signInWithPassword({ email, password });
-
-  btn.disabled = false;
-
-  if (error) {
-    errorEl.textContent = error.message.includes("Invalid login")
-      ? "Incorrect email or password."
-      : error.message;
-    return;
-  }
-
-  if (authMode === "signup" && !data.session) {
-    // Email confirmation is on for this project — they'll need to
-    // confirm before their first login. Guest checkout still works
-    // in the meantime.
-    errorEl.textContent = "";
-    alert("Account created! Check your email to confirm it, then log in.");
-    setAuthMode("login");
-    return;
-  }
-
-  // One shared login for everyone — after signing in, ask the database
-  // what kind of account this is and send admin/driver accounts to
-  // their own dashboards. A plain customer just stays logged in here.
-  if (authMode === "login") {
-    const { data: role } = await sb.rpc("get_my_role");
-    if (role === "admin") {
-      window.location.href = "/admin/";
-      return;
-    }
-    if (role === "driver") {
-      window.location.href = "/driver/";
-      return;
-    }
-  }
-
-  closeAuth();
-  updateAccountUI();
-}
-
-function updateAccountUI() {
-  const accountBtn = document.getElementById("accountBtn");
-  if (CURRENT_USER) {
-    const meta = CURRENT_USER.user_metadata || {};
-    // Prefer a first name; if all we have is the email (no name on file),
-    // use just the part before "@" — the full address is too long for
-    // this pill button and breaks the navbar layout.
-    const label = meta.first_name
-      || (meta.full_name ? meta.full_name.split(" ")[0] : null)
-      || CURRENT_USER.email.split("@")[0];
-    accountBtn.textContent = "Hi, " + label;
-  } else {
-    accountBtn.textContent = "Log In";
-  }
-  document.getElementById("accountMenu").classList.remove("show");
-  updateAdminLinkVisibility();
-}
-
-/* ---------------------------------------------------------------------
-   Admin Dashboard link — only shown once we've confirmed the signed-in
-   account is actually listed in `admins` (see supabase-schema-optional-
-   login.sql). A customer account never sees this, logged in or not.
-   --------------------------------------------------------------------- */
-async function updateAdminLinkVisibility() {
-  const link = document.getElementById("adminDashboardLink");
-  if (!CURRENT_USER) {
-    link.classList.add("hidden");
-    return;
-  }
-
-  const { data, error } = await sb.from("admins").select("user_id").eq("user_id", CURRENT_USER.id).maybeSingle();
-  link.classList.toggle("hidden", error || !data);
-}
-
-function toggleAccountMenu() {
-  if (!CURRENT_USER) {
-    openAuth();
-    return;
-  }
-  document.getElementById("accountMenu").classList.toggle("show");
-}
-
-async function handleLogout() {
-  await sb.auth.signOut();
-  CURRENT_USER = null;
-  updateAccountUI();
-}
-
-async function openMyOrders() {
-  document.getElementById("accountMenu").classList.remove("show");
-  const listEl = document.getElementById("myOrdersList");
-  listEl.innerHTML = `<p class="cart-empty">Loading…</p>`;
-  document.getElementById("myOrdersModal").classList.add("show");
-  document.getElementById("myOrdersOverlay").classList.add("show");
-
-  const { data: orders, error } = await sb.from("orders").select("*").order("created_at", { ascending: false });
-
-  if (error) {
-    listEl.innerHTML = `<p class="cart-empty">Couldn't load your orders.</p>`;
-    return;
-  }
-
-  listEl.innerHTML = orders.length
-    ? orders
-        .map((o) => {
-          const items = o.items.map((it) => `${it.name} (${it.size}/${it.color}) ×${it.qty}`).join(", ");
-          const statusClass = o.payment_status === "Paid" ? "ok" : o.payment_status === "Refunded" ? "out" : "low";
-          return `
-        <div class="my-order-card">
-          <div class="my-order-top">
-            <span class="mono">${o.order_code}</span>
-            <span class="stock-pill ${statusClass}">${o.payment_status}</span>
-          </div>
-          <p class="my-order-items">${items}</p>
-          ${orderTrackerHtml(o.order_status, o.fulfillment_method)}
-          <div class="my-order-bottom">
-            <span class="mono">${peso(o.total)}</span>
-            <span>${new Date(o.created_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}</span>
-          </div>
-        </div>`;
-        })
-        .join("")
-    : `<p class="cart-empty">You don't have any orders yet.</p>`;
-}
-
-/* ---------------------------------------------------------------------
-   Order tracker — a Lazada/Shopee-style progress stepper for the
-   fulfillment stage the admin sets from the ShopTrack dashboard.
-   --------------------------------------------------------------------- */
-function orderTrackerHtml(status, fulfillmentMethod) {
-  if (status === "Cancelled") {
-    return `<div class="order-tracker cancelled"><span class="tracker-cancelled-label">✕ Order Cancelled</span></div>`;
-  }
-
-  const isPickup = fulfillmentMethod === "Pickup";
-  const stages = ["Pending", "Processing", isPickup ? "Ready for Pickup" : "Out for Delivery", "Delivered"];
-  // The database still stores "Out for Delivery" for both — only the label shown here differs.
-  const currentIndex = Math.max(stages.indexOf(status === "Out for Delivery" ? stages[2] : status), 0);
-
-  const steps = stages
-    .map((stage, i) => {
-      const state = i < currentIndex ? "done" : i === currentIndex ? "active" : "";
-      return `<div class="tracker-step ${state}"><span class="tracker-dot"></span><span class="tracker-label">${stage}</span></div>`;
-    })
-    .join("");
-
-  return `<div class="order-tracker">${steps}</div>`;
-}
-
-function closeMyOrders() {
-  document.getElementById("myOrdersModal").classList.remove("show");
-  document.getElementById("myOrdersOverlay").classList.remove("show");
-}
-
-/* ---------------------------------------------------------------------
-   Track My Order — no account needed. Looks up a single order by its
-   order number alone, via the track_order() database function (see
-   supabase-schema-track-order-code-only.sql), so guest checkouts (the
-   majority of orders) can still check status.
-   --------------------------------------------------------------------- */
-function openTrackOrder() {
-  document.getElementById("trackOrderForm").reset();
-  document.getElementById("trackOrderError").textContent = "";
-  document.getElementById("trackOrderResult").classList.add("hidden");
-  document.getElementById("trackOrderModal").classList.add("show");
-  document.getElementById("trackOrderOverlay").classList.add("show");
-}
-
-function closeTrackOrder() {
-  document.getElementById("trackOrderModal").classList.remove("show");
-  document.getElementById("trackOrderOverlay").classList.remove("show");
-}
-
-async function handleTrackOrderSubmit(e) {
-  e.preventDefault();
-  const orderCode = document.getElementById("trackOrderCode").value.trim();
-  const errorEl = document.getElementById("trackOrderError");
-  const resultEl = document.getElementById("trackOrderResult");
-
-  errorEl.textContent = "";
-  resultEl.classList.add("hidden");
-
-  const { data, error } = await sb.rpc("track_order", { p_order_code: orderCode });
-
-  if (error) {
-    errorEl.textContent = "Something went wrong — please try again.";
-    return;
-  }
-
-  if (!data || data.length === 0) {
-    errorEl.textContent = "No order found with that order number. Double-check it and try again.";
-    return;
-  }
-
-  resultEl.innerHTML = data
-    .map((o) => {
-      const items = o.items.map((it) => `${it.name} (${it.size}/${it.color}) ×${it.qty}`).join(", ");
-      const statusClass = o.payment_status === "Paid" ? "ok" : o.payment_status === "Refunded" ? "out" : "low";
-      return `
-        <div class="my-order-card">
-          <div class="my-order-top">
-            <span class="mono">${o.order_code}</span>
-            <span class="stock-pill ${statusClass}">${o.payment_status}</span>
-          </div>
-          <p class="my-order-items">${items}</p>
-          ${orderTrackerHtml(o.order_status, o.fulfillment_method)}
-          <div class="my-order-bottom">
-            <span class="mono">${peso(o.total)}</span>
-            <span>${new Date(o.created_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}</span>
-          </div>
-        </div>
-      `;
-    })
-    .join("");
-  resultEl.classList.remove("hidden");
-}
-
-async function initAuth() {
-  const { data } = await sb.auth.getSession();
-  CURRENT_USER = data.session?.user || null;
-  updateAccountUI();
-
-  sb.auth.onAuthStateChange((event, session) => {
-    CURRENT_USER = session?.user || null;
-    updateAccountUI();
-
-    // Supabase lands the user back here (via the emailed reset link)
-    // with a temporary "recovery" session — that's our cue to ask for
-    // a new password instead of treating it as a normal login.
-    if (event === "PASSWORD_RECOVERY") {
-      openNewPasswordModal();
-    }
-  });
-}
-
-/* ---------------------------------------------------------------------
-   Forgot password — sends a reset link to the email on file. No
-   account lookup needed client-side; Supabase just no-ops quietly if
-   the address doesn't match anything, same as it does for signup.
-   --------------------------------------------------------------------- */
-function openForgotPassword() {
-  closeAuth();
-  document.getElementById("forgotForm").reset();
-  document.getElementById("forgotError").textContent = "";
-  document.getElementById("forgotEmail").value = document.getElementById("authEmail").value;
-  document.getElementById("forgotModal").classList.add("show");
-  document.getElementById("forgotOverlay").classList.add("show");
-}
-
-function closeForgotPassword() {
-  document.getElementById("forgotModal").classList.remove("show");
-  document.getElementById("forgotOverlay").classList.remove("show");
-}
-
-async function handleForgotSubmit(e) {
-  e.preventDefault();
-  const email = document.getElementById("forgotEmail").value.trim();
-  const errorEl = document.getElementById("forgotError");
-  const btn = document.getElementById("forgotSubmitBtn");
-
-  btn.disabled = true;
-  const { error } = await sb.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin + window.location.pathname,
-  });
-  btn.disabled = false;
-
-  if (error) {
-    errorEl.textContent = error.message;
-    return;
-  }
-
-  closeForgotPassword();
-  alert(`If an account exists for ${email}, a password reset link is on its way — check your inbox.`);
-}
-
-/* ---------------------------------------------------------------------
-   Set new password — reached only via the emailed reset link
-   (PASSWORD_RECOVERY event above), never opened directly by a button.
-   --------------------------------------------------------------------- */
-function openNewPasswordModal() {
-  document.getElementById("newPasswordForm").reset();
-  document.getElementById("newPasswordError").textContent = "";
-  document.getElementById("newPasswordModal").classList.add("show");
-  document.getElementById("newPasswordOverlay").classList.add("show");
-}
-
-function closeNewPasswordModal() {
-  document.getElementById("newPasswordModal").classList.remove("show");
-  document.getElementById("newPasswordOverlay").classList.remove("show");
-}
-
-async function handleNewPasswordSubmit(e) {
-  e.preventDefault();
-  const password = document.getElementById("newPassword").value;
-  const errorEl = document.getElementById("newPasswordError");
-
-  const { error } = await sb.auth.updateUser({ password });
-
-  if (error) {
-    errorEl.textContent = error.message;
-    return;
-  }
-
-  closeNewPasswordModal();
-  alert("Password updated! You're logged in with your new password.");
-}
-
-/* ---------------------------------------------------------------------
-   Realtime — reflect admin edits / other customers' purchases live
-   --------------------------------------------------------------------- */
-function subscribeRealtime() {
-  sb.channel("storefront-products")
-    .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => {
-      loadProducts();
-    })
-    .subscribe();
-}
-
-/* ---------------------------------------------------------------------
-   Returning from PayMongo's GCash checkout — this is UX only. The real
-   confirmation already happened (or is about to) via PayMongo's webhook
-   hitting paymongo-webhook server-side; this just tells the customer
-   what to expect instead of leaving them on a blank "thanks" page.
-   --------------------------------------------------------------------- */
-function handlePaymongoReturn() {
-  const params = new URLSearchParams(window.location.search);
-  const result = params.get("paymongo");
-  const orderCode = params.get("order");
-  const orderRef = params.get("ref"); // the order's UUID, only on cancel_url
-  if (!result) return;
-
-  document.getElementById("confirmText").textContent =
-    result === "success"
-      ? `Thanks! We're confirming your GCash payment for order ${orderCode || ""} now — this usually only takes a few seconds. ` +
-        `You can check its status anytime with "Track Order" using this order number.`
-      : `Cancelling order ${orderCode || ""} — one moment…`;
-  document.getElementById("confirmModal").classList.add("show");
-  document.getElementById("confirmOverlay").classList.add("show");
-
-  // Drop the query string so refreshing/bookmarking doesn't re-show this.
-  window.history.replaceState({}, "", window.location.pathname);
-
-  if (result === "cancelled" && orderRef) {
-    cancelGcashOrder(orderCode, { action: "cancel_checkout", order_id: orderRef });
-  } else if (result === "failed" && orderCode) {
-    // Older Source-flow orders (see create-paymongo-source).
-    cancelGcashOrder(orderCode, { action: "cancel_if_failed", order_code: orderCode });
-  }
-}
-
-/* ---------------------------------------------------------------------
-   The server double-checks with PayMongo before cancelling anything —
-   this redirect alone is never trusted. If PayMongo confirms nothing was
-   paid, the order is cancelled and its items go back on the shelf.
-   --------------------------------------------------------------------- */
-async function cancelGcashOrder(orderCode, payload) {
-  const textEl = document.getElementById("confirmText");
-  try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/${PAYMONGO_SOURCE_FUNCTION_SLUG}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    textEl.textContent = data.cancelled
-      ? `Your GCash payment for order ${orderCode} was cancelled, so the order has been cancelled too. ` +
-        `Nothing was charged — you're welcome to place a new order anytime.`
-      : `We couldn't confirm the status of order ${orderCode} just yet. ` +
-        `Use "Track Order" with this order number to check on it, or message us and we'll sort it out.`;
-  } catch (err) {
-    console.error("Couldn't check GCash payment status:", err);
-    textEl.textContent =
-      `We couldn't confirm the status of order ${orderCode} just yet. ` +
-      `Use "Track Order" with this order number to check on it, or message us and we'll sort it out.`;
-  }
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  loadProducts();
-  subscribeRealtime();
-  initAuth();
-  handlePaymongoReturn();
-
-  renderHeroSlides();
-  restartHeroAutoplay();
-  initNavbarScroll();
-  initChatWidget();
-  document.getElementById("heroPrev").addEventListener("click", () => goToHeroSlide(heroIndex - 1));
-  document.getElementById("heroNext").addEventListener("click", () => goToHeroSlide(heroIndex + 1));
-
-  document.getElementById("cartBtn").addEventListener("click", openCart);
-  document.getElementById("closeCart").addEventListener("click", closeCart);
-  document.getElementById("cartOverlay").addEventListener("click", closeCart);
-
-  document.getElementById("checkoutBtn").addEventListener("click", openCheckout);
-  document.getElementById("closeCheckout").addEventListener("click", closeCheckout);
-  document.getElementById("checkoutOverlay").addEventListener("click", closeCheckout);
-  document.getElementById("checkoutForm").addEventListener("submit", handleCheckoutSubmit);
-
-  document.getElementById("closeConfirm").addEventListener("click", closeConfirm);
-  document.getElementById("confirmOverlay").addEventListener("click", closeConfirm);
-
-  document.getElementById("closePaymentInstructions").addEventListener("click", closePaymentInstructions);
-  document.getElementById("paymentInstructionsOverlay").addEventListener("click", closePaymentInstructions);
-
-  document.getElementById("accountBtn").addEventListener("click", toggleAccountMenu);
-  document.getElementById("myOrdersBtn").addEventListener("click", openMyOrders);
-  document.getElementById("logoutBtn").addEventListener("click", handleLogout);
-  document.addEventListener("click", (e) => {
-    const menu = document.getElementById("accountMenu");
-    const btn = document.getElementById("accountBtn");
-    if (!menu.contains(e.target) && e.target !== btn) menu.classList.remove("show");
-  });
-
-  document.getElementById("authCancelBtn").addEventListener("click", closeAuth);
-  document.getElementById("authOverlay").addEventListener("click", closeAuth);
-  document.getElementById("authForm").addEventListener("submit", handleAuthSubmit);
-  document.getElementById("authSwitchBtn").addEventListener("click", () =>
-    setAuthMode(authMode === "signup" ? "login" : "signup")
-  );
-
-  document.getElementById("forgotPasswordBtn").addEventListener("click", openForgotPassword);
-  document.getElementById("forgotCancelBtn").addEventListener("click", closeForgotPassword);
-  document.getElementById("forgotOverlay").addEventListener("click", closeForgotPassword);
-  document.getElementById("forgotForm").addEventListener("submit", handleForgotSubmit);
-
-  document.getElementById("newPasswordOverlay").addEventListener("click", closeNewPasswordModal);
-  document.getElementById("newPasswordForm").addEventListener("submit", handleNewPasswordSubmit);
-
-  document.getElementById("closeMyOrders").addEventListener("click", closeMyOrders);
-  document.getElementById("myOrdersOverlay").addEventListener("click", closeMyOrders);
-
-  document.getElementById("trackOrderBtn").addEventListener("click", openTrackOrder);
-  document.getElementById("closeTrackOrder").addEventListener("click", closeTrackOrder);
-  document.getElementById("trackOrderOverlay").addEventListener("click", closeTrackOrder);
-  document.getElementById("trackOrderForm").addEventListener("submit", handleTrackOrderSubmit);
-
-  document.getElementById("closeQuickView").addEventListener("click", closeQuickView);
-  document.getElementById("quickViewOverlay").addEventListener("click", closeQuickView);
-  document.getElementById("qvAddToCartBtn").addEventListener("click", handleQuickViewAddToCart);
-});
-
-/* =========================================================================
-   Brass & Thread — scroll reveal
-   Self-contained: doesn't touch script.js, cart state, or order logic.
-   Fades sections up into place as they enter the viewport. Product cards
-   are picked up automatically the moment script.js renders them into
-   #productGrid — no coordination with that file needed.
-   ========================================================================= */
-   (function () {
-    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  
-    const staticSelectors = [
-      ".section-head",
-      ".how-card",
-      ".faq-item",
-      ".sizechart-table-wrap",
-      ".sizechart-note",
-      ".contact-section h2",
-      ".contact-section p",
-    ];
-  
-    function markReveal(el) {
-      if (!el || el.classList.contains("reveal")) return;
-      el.classList.add("reveal");
-    }
-  
-    document.querySelectorAll(staticSelectors.join(",")).forEach(markReveal);
-  
-    // Respect the setting — show everything immediately, no motion at all.
-    if (prefersReduced) {
-      document.querySelectorAll(".reveal").forEach((el) => el.classList.add("in-view"));
-      return;
-    }
-  
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("in-view");
-            observer.unobserve(entry.target); // reveal once, don't re-hide on scroll back up
-          }
-        });
-      },
-      { threshold: 0.15, rootMargin: "0px 0px -40px 0px" }
-    );
-  
-    document.querySelectorAll(".reveal").forEach((el) => observer.observe(el));
-  
-    // Product cards don't exist yet at page load — script.js renders them
-    // into #productGrid after fetching stock. Watch for that and reveal
-    // each card, staggered slightly by its position in the grid.
-    const grid = document.getElementById("productGrid");
-    if (grid) {
-      const revealCard = (card, index) => {
-        markReveal(card);
-        card.style.setProperty("--reveal-delay", `${(index % 6) * 0.08}s`);
-        observer.observe(card);
-      };
-  
-      grid.querySelectorAll(".product-card").forEach(revealCard);
-  
-      const gridObserver = new MutationObserver(() => {
-        grid.querySelectorAll(".product-card:not(.reveal)").forEach((card, i) => revealCard(card, i));
-      });
-      gridObserver.observe(grid, { childList: true });
-    }
-  })();
+   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+   const LOW_STOCK_THRESHOLD = 3;
+   
+   let PRODUCTS = [];
+   let ORDERS = [];
+   
+   // Analytics state — granularity drives the default window; a custom
+   // range (if set) always wins over the granularity's default window.
+   let analyticsGranularity = "daily";
+   let analyticsCustomRange = null; // { from: Date, to: Date } | null
+   
+   function peso(n) {
+     return "₱" + Number(n).toLocaleString("en-PH");
+   }
+   function formatDate(iso) {
+     return new Date(iso).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" });
+   }
+   
+   /* ---------------------------------------------------------------------
+      Auth — no login form here. You log in from the storefront ("Log In"
+      in the navbar); get_my_role() there sends admin accounts to this
+      page. On load, this just checks: is there a session, and is it
+      actually an admin? If not, back to the storefront to log in.
+      --------------------------------------------------------------------- */
+   async function checkAuthAndInit() {
+     const { data } = await sb.auth.getSession();
+
+     if (!data.session) {
+       goToLogin();
+       return;
+     }
+
+     const { data: role } = await sb.rpc("get_my_role");
+     if (role !== "admin") {
+       await sb.auth.signOut();
+       goToLogin();
+       return;
+     }
+
+     showApp();
+   }
+
+   function goToLogin() {
+     window.location.href = "/";
+   }
+
+   async function handleLogout() {
+     try {
+       await sb.auth.signOut();
+     } catch (err) {
+       console.error("Sign out error:", err);
+     }
+     goToLogin();
+   }
+
+   function showApp() {
+     document.getElementById("loginScreen").classList.add("hidden");
+     document.getElementById("adminApp").classList.remove("hidden");
+     loadAll();
+   }
+   
+   /* ---------------------------------------------------------------------
+      Tabs
+      --------------------------------------------------------------------- */
+   function switchTab(tabName) {
+     document.querySelectorAll(".nav-item[data-tab]").forEach((btn) => {
+       btn.classList.toggle("active", btn.dataset.tab === tabName);
+     });
+     document.querySelectorAll(".tab-panel").forEach((panel) => {
+       panel.classList.toggle("active", panel.id === "tab-" + tabName);
+     });
+   }
+   
+   /* ---------------------------------------------------------------------
+      Load data
+      --------------------------------------------------------------------- */
+   async function loadAll() {
+     const [{ data: products, error: pErr }, { data: orders, error: oErr }] = await Promise.all([
+       sb.from("products").select("*").order("name"),
+       sb.from("orders").select("*").order("created_at", { ascending: false }),
+     ]);
+   
+     if (pErr) console.error(pErr);
+     if (oErr) console.error(oErr);
+   
+     PRODUCTS = products || [];
+     ORDERS = orders || [];
+   
+     renderDashboard();
+     renderAnalytics();
+     renderInventory();
+     renderOrders();
+   }
+   
+   /* ---------------------------------------------------------------------
+      Dashboard
+      --------------------------------------------------------------------- */
+   function renderDashboard() {
+     const totalUnits = PRODUCTS.reduce((sum, p) => sum + p.stock, 0);
+     const lowStock = PRODUCTS.filter((p) => p.stock > 0 && p.stock <= LOW_STOCK_THRESHOLD).length;
+     const soldOut = PRODUCTS.filter((p) => p.stock <= 0).length;
+     const pending = ORDERS.filter((o) => o.payment_status === "Pending" && o.order_status !== "Cancelled").length;
+     // Aligned with Analytics: only orders that are both Delivered and
+     // Paid count as realized sales. (Previously this counted every
+     // non-cancelled order, which double-counted unpaid/in-transit orders.)
+     const totalSales = ORDERS.filter(isSaleOrder).reduce((sum, o) => sum + Number(o.total), 0);
+   
+     document.getElementById("statProducts").textContent = PRODUCTS.length;
+     document.getElementById("statUnits").textContent = totalUnits;
+     document.getElementById("statLowStock").textContent = lowStock;
+     document.getElementById("statSoldOut").textContent = soldOut;
+     document.getElementById("statPending").textContent = pending;
+     document.getElementById("statSales").textContent = peso(totalSales);
+   
+     const body = document.querySelector("#recentOrdersTable tbody");
+     const recent = ORDERS.slice(0, 5);
+   
+     body.innerHTML = recent.length
+       ? recent
+           .map(
+             (o) => `
+         <tr>
+           <td class="mono">${o.order_code}</td>
+           <td>${o.full_name}</td>
+           <td class="mono">${peso(o.total)}</td>
+           <td>${statusBadge(o)}</td>
+           <td>${fulfillmentBadge(o.order_status, o.fulfillment_method)}</td>
+           <td>${formatDate(o.created_at)}</td>
+         </tr>`
+           )
+           .join("")
+       : `<tr class="empty-row"><td colspan="6">No orders yet.</td></tr>`;
+   
+     attachStatusToggles();
+   }
+   
+   /* ---------------------------------------------------------------------
+      Analytics
+      --------------------------------------------------------------------- */
+   
+   // A "sale" only counts once it's Delivered AND Paid — matches how the
+   // Dashboard's Total Sales stat is now computed too.
+   function isSaleOrder(o) {
+     return o.payment_status === "Paid" && o.order_status === "Delivered";
+   }
+   
+   function startOfDay(d) {
+     const x = new Date(d);
+     x.setHours(0, 0, 0, 0);
+     return x;
+   }
+   function addDays(d, n) {
+     const x = new Date(d);
+     x.setDate(x.getDate() + n);
+     return x;
+   }
+   function addMonths(d, n) {
+     const x = new Date(d);
+     x.setMonth(x.getMonth() + n);
+     return x;
+   }
+   function toDateInputValue(d) {
+     const y = d.getFullYear();
+     const m = String(d.getMonth() + 1).padStart(2, "0");
+     const day = String(d.getDate()).padStart(2, "0");
+     return `${y}-${m}-${day}`;
+   }
+   
+   function getDefaultRange(granularity) {
+     const today = startOfDay(new Date());
+     if (granularity === "daily") return { from: addDays(today, -29), to: today };
+     if (granularity === "monthly") return { from: new Date(today.getFullYear(), today.getMonth() - 11, 1), to: today };
+     return { from: new Date(today.getFullYear() - 4, 0, 1), to: today }; // yearly: last 5 years
+   }
+   
+   function getActiveRange() {
+     return analyticsCustomRange || getDefaultRange(analyticsGranularity);
+   }
+   
+   function bucketKey(date, granularity) {
+     const y = date.getFullYear();
+     const m = String(date.getMonth() + 1).padStart(2, "0");
+     const d = String(date.getDate()).padStart(2, "0");
+     if (granularity === "daily") return `${y}-${m}-${d}`;
+     if (granularity === "monthly") return `${y}-${m}`;
+     return `${y}`;
+   }
+   
+   function bucketLabel(date, granularity) {
+     if (granularity === "daily") return date.toLocaleDateString("en-PH", { month: "short", day: "numeric" });
+     if (granularity === "monthly") return date.toLocaleDateString("en-PH", { month: "short", year: "2-digit" });
+     return String(date.getFullYear());
+   }
+   
+   // Builds one bucket per unit of time across the whole range (even ones
+   // with zero sales) so the chart reads as a continuous timeline.
+   function buildBuckets(from, to, granularity) {
+     const buckets = [];
+     let cursor = new Date(from);
+     let guard = 0;
+     while (cursor <= to && guard < 2000) {
+       buckets.push({ key: bucketKey(cursor, granularity), label: bucketLabel(cursor, granularity), total: 0 });
+       if (granularity === "daily") cursor = addDays(cursor, 1);
+       else if (granularity === "monthly") cursor = addMonths(cursor, 1);
+       else cursor = new Date(cursor.getFullYear() + 1, 0, 1);
+       guard++;
+     }
+     return buckets;
+   }
+   
+   function computeAnalytics() {
+     const { from, to } = getActiveRange();
+     const rangeEnd = addDays(startOfDay(to), 1); // make "to" inclusive of that whole day
+   
+     const sales = ORDERS.filter((o) => {
+       if (!isSaleOrder(o)) return false;
+       const d = new Date(o.created_at);
+       return d >= from && d < rangeEnd;
+     });
+   
+     const buckets = buildBuckets(from, to, analyticsGranularity);
+     const bucketMap = new Map(buckets.map((b) => [b.key, b]));
+     sales.forEach((o) => {
+       const bucket = bucketMap.get(bucketKey(new Date(o.created_at), analyticsGranularity));
+       if (bucket) bucket.total += Number(o.total);
+     });
+   
+     const totalIncome = sales.reduce((sum, o) => sum + Number(o.total), 0);
+     const orderCount = sales.length;
+     const avgOrderValue = orderCount ? totalIncome / orderCount : 0;
+   
+     // Compare against the immediately preceding period of equal length.
+     const rangeMs = rangeEnd - from;
+     const prevTo = new Date(from);
+     const prevFrom = new Date(from.getTime() - rangeMs);
+     const prevIncome = ORDERS.filter((o) => {
+       if (!isSaleOrder(o)) return false;
+       const d = new Date(o.created_at);
+       return d >= prevFrom && d < prevTo;
+     }).reduce((sum, o) => sum + Number(o.total), 0);
+   
+     let trend = null;
+     if (prevIncome > 0) trend = ((totalIncome - prevIncome) / prevIncome) * 100;
+     else if (totalIncome > 0) trend = 100;
+   
+     // Top products by revenue, within the selected range.
+     const productMap = new Map();
+     sales.forEach((o) => {
+       (o.items || []).forEach((it) => {
+         const key = `${it.name}|${it.size}|${it.color}`;
+         const entry = productMap.get(key) || { name: it.name, size: it.size, color: it.color, units: 0, revenue: 0 };
+         entry.units += it.qty;
+         entry.revenue += it.price * it.qty;
+         productMap.set(key, entry);
+       });
+     });
+     const topProducts = Array.from(productMap.values())
+       .sort((a, b) => b.revenue - a.revenue)
+       .slice(0, 5);
+   
+     return { buckets, totalIncome, orderCount, avgOrderValue, trend, topProducts, salesForExport: sales };
+   }
+   
+   function renderAnalytics() {
+     const { buckets, totalIncome, orderCount, avgOrderValue, trend, topProducts } = computeAnalytics();
+   
+     document.getElementById("analyticsIncome").textContent = peso(totalIncome);
+     document.getElementById("analyticsOrderCount").textContent = orderCount;
+     document.getElementById("analyticsAOV").textContent = peso(Math.round(avgOrderValue));
+   
+     const trendEl = document.getElementById("analyticsTrend");
+     if (trend === null) {
+       trendEl.textContent = "—";
+       trendEl.className = "stat-value";
+     } else {
+       const arrow = trend >= 0 ? "▲" : "▼";
+       trendEl.textContent = `${arrow} ${Math.abs(trend).toFixed(1)}%`;
+       trendEl.className = "stat-value " + (trend >= 0 ? "trend-up" : "trend-down");
+     }
+   
+     document.getElementById("analyticsChartTitle").textContent =
+       analyticsGranularity === "daily" ? "Daily Income" : analyticsGranularity === "monthly" ? "Monthly Income" : "Yearly Income";
+   
+     const chartEl = document.getElementById("analyticsChart");
+     const max = Math.max(...buckets.map((b) => b.total), 1);
+     chartEl.innerHTML = buckets.length
+       ? buckets
+           .map((b) => {
+             const pct = b.total > 0 ? Math.max((b.total / max) * 100, 3) : 0;
+             return `
+           <div class="bar-chart-col" title="${b.label}: ${peso(b.total)}">
+             <div class="bar-chart-track"><div class="bar-chart-bar" style="height:${pct}%"></div></div>
+             <span class="bar-chart-label">${b.label}</span>
+           </div>`;
+           })
+           .join("")
+       : `<p class="bar-chart-empty">No data in this range.</p>`;
+   
+     const topBody = document.querySelector("#topProductsTable tbody");
+     topBody.innerHTML = topProducts.length
+       ? topProducts
+           .map(
+             (p) => `
+         <tr>
+           <td>${p.name}</td>
+           <td>${p.size} / ${p.color}</td>
+           <td class="mono">${p.units}</td>
+           <td class="mono">${peso(p.revenue)}</td>
+         </tr>`
+           )
+           .join("")
+       : `<tr class="empty-row"><td colspan="4">No sales in this range.</td></tr>`;
+   }
+   
+   function syncAnalyticsRangeInputs() {
+     const { from, to } = getActiveRange();
+     document.getElementById("analyticsFrom").value = toDateInputValue(from);
+     document.getElementById("analyticsTo").value = toDateInputValue(to);
+   }
+   
+   function setGranularity(granularity) {
+     analyticsGranularity = granularity;
+     analyticsCustomRange = null; // switching granularity resets to its default window
+     document.querySelectorAll(".granularity-btn").forEach((b) => b.classList.toggle("active", b.dataset.granularity === granularity));
+     syncAnalyticsRangeInputs();
+     renderAnalytics();
+   }
+   
+   function applyCustomRange() {
+     const fromVal = document.getElementById("analyticsFrom").value;
+     const toVal = document.getElementById("analyticsTo").value;
+     const errEl = document.getElementById("analyticsFrom"); // reuse field focus on error
+     if (!fromVal || !toVal) return;
+   
+     const from = startOfDay(new Date(fromVal));
+     const to = startOfDay(new Date(toVal));
+     if (from > to) {
+       alert("'From' date must be on or before 'To' date.");
+       errEl.focus();
+       return;
+     }
+     analyticsCustomRange = { from, to };
+     renderAnalytics();
+   }
+   
+   function clearCustomRange() {
+     analyticsCustomRange = null;
+     syncAnalyticsRangeInputs();
+     renderAnalytics();
+   }
+   
+   /* ---------------------------------------------------------------------
+      CSV export
+      --------------------------------------------------------------------- */
+   function toCsvValue(v) {
+     if (v === null || v === undefined) return "";
+     const s = String(v);
+     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+   }
+   
+   function downloadCsv(filename, rows) {
+     const csv = rows.map((r) => r.map(toCsvValue).join(",")).join("\r\n");
+     const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" }); // BOM so Excel reads ₱ correctly
+     const url = URL.createObjectURL(blob);
+     const a = document.createElement("a");
+     a.href = url;
+     a.download = filename;
+     document.body.appendChild(a);
+     a.click();
+     a.remove();
+     URL.revokeObjectURL(url);
+   }
+   
+   function itemsSummary(order) {
+     return (order.items || []).map((it) => `${it.name} (${it.size}/${it.color}) x${it.qty}`).join("; ");
+   }
+   
+   // Exports the sales orders (Delivered + Paid) behind the currently
+   // selected Analytics range.
+   function exportAnalyticsCsv() {
+     const { salesForExport, totalIncome } = computeAnalytics();
+     const rows = [["Order Code", "Customer", "Contact", "Items", "Total", "Payment Method", "Date"]];
+     salesForExport.forEach((o) => {
+       rows.push([o.order_code, o.full_name, o.contact_number || "", itemsSummary(o), o.total, o.payment_method, formatDate(o.created_at)]);
+     });
+     rows.push([]);
+     rows.push(["Total Income", "", "", "", totalIncome]);
+   
+     const { from, to } = getActiveRange();
+     downloadCsv(`sales-${toDateInputValue(from)}_to_${toDateInputValue(to)}.csv`, rows);
+   }
+   
+   // Exports whatever's currently visible in the Orders tab (search term +
+   // status filter applied), regardless of payment/fulfillment status.
+   function exportOrdersCsv() {
+     const filtered = getFilteredOrders();
+     const rows = [["Order Code", "Customer", "Contact", "Email", "Items", "Total", "Payment Method", "Payment Status", "Delivery/Pickup", "Fulfillment Status", "Date"]];
+     filtered.forEach((o) => {
+       rows.push([
+         o.order_code,
+         o.full_name,
+         o.contact_number || "",
+         o.email || "",
+         itemsSummary(o),
+         o.total,
+         o.payment_method,
+         o.payment_status,
+         o.fulfillment_method || "Delivery",
+         statusLabel(o.order_status || "Pending", o.fulfillment_method),
+         formatDate(o.created_at),
+       ]);
+     });
+     downloadCsv(`orders-${toDateInputValue(startOfDay(new Date()))}.csv`, rows);
+   }
+   
+   /* ---------------------------------------------------------------------
+      Inventory
+      --------------------------------------------------------------------- */
+   function stockBadge(stock) {
+     if (stock <= 0) return `<span class="badge out">Sold Out</span>`;
+     if (stock <= LOW_STOCK_THRESHOLD) return `<span class="badge low">${stock} left</span>`;
+     return `<span class="badge ok">${stock} in stock</span>`;
+   }
+   
+   function renderInventory() {
+     const body = document.querySelector("#inventoryTable tbody");
+   
+     if (PRODUCTS.length === 0) {
+       body.innerHTML = `<tr class="empty-row"><td colspan="9">No items in inventory yet.</td></tr>`;
+       return;
+     }
+   
+     body.innerHTML = PRODUCTS.map(
+       (p) => `
+       <tr>
+         <td>${p.image_url ? `<img class="row-thumb" src="${p.image_url}" alt="${p.name}" />` : `<div class="row-thumb row-thumb-empty"></div>`}</td>
+         <td>${p.name}</td>
+         <td>${p.size}</td>
+         <td>${p.color}</td>
+         <td class="mono">${peso(p.cost)}</td>
+         <td class="mono">${peso(p.price)}</td>
+         <td class="mono">${p.stock}</td>
+         <td>${stockBadge(p.stock)}</td>
+         <td>
+           <div class="row-actions">
+             <button data-action="restock" data-id="${p.id}">+ Stock</button>
+             <button data-action="deduct" data-id="${p.id}">− Stock</button>
+             <button data-action="edit" data-id="${p.id}">Edit</button>
+             <button data-action="delete" data-id="${p.id}" class="danger">Delete</button>
+           </div>
+         </td>
+       </tr>`
+     ).join("");
+   
+     body.querySelectorAll("[data-action]").forEach((btn) => {
+       btn.addEventListener("click", () => {
+         const id = btn.dataset.id;
+         if (btn.dataset.action === "edit") openProductModal(id);
+         else if (btn.dataset.action === "restock") openRestockModal(id);
+         else if (btn.dataset.action === "deduct") openDeductModal(id);
+         else deleteProduct(id);
+       });
+     });
+   }
+   
+   /* ---------------------------------------------------------------------
+      Restock — quick "+N units" instead of retyping the whole new total
+      via Edit. Same effect as Edit, just a friendlier action for the most
+      common admin task (a new overrun batch of the same item arrives).
+      --------------------------------------------------------------------- */
+   function openRestockModal(id) {
+     const product = PRODUCTS.find((p) => p.id === id);
+     if (!product) return;
+   
+     document.getElementById("restockForm").reset();
+     document.getElementById("restockError").textContent = "";
+     document.getElementById("restockId").value = id;
+     document.getElementById("restockItemInfo").textContent =
+       `${product.name} (${product.size}/${product.color}) — currently ${product.stock} in stock.`;
+     document.getElementById("restockQty").value = 1;
+   
+     document.getElementById("restockModal").classList.add("show");
+     document.getElementById("restockOverlay").classList.add("show");
+   }
+   
+   function closeRestockModal() {
+     document.getElementById("restockModal").classList.remove("show");
+     document.getElementById("restockOverlay").classList.remove("show");
+   }
+   
+   async function handleRestockSubmit(e) {
+     e.preventDefault();
+     const id = document.getElementById("restockId").value;
+     const qty = Number(document.getElementById("restockQty").value);
+     const errorEl = document.getElementById("restockError");
+   
+     const product = PRODUCTS.find((p) => p.id === id);
+     if (!product) return;
+   
+     if (!qty || qty < 1) {
+       errorEl.textContent = "Enter how many units to add.";
+       return;
+     }
+   
+     const { error } = await sb.from("products").update({ stock: product.stock + qty }).eq("id", id);
+   
+     if (error) {
+       errorEl.textContent = "Couldn't restock: " + error.message;
+       return;
+     }
+   
+     closeRestockModal();
+     loadAll();
+   }
+   
+   /* ---------------------------------------------------------------------
+      Deduct stock — the mirror of Restock, for damaged units, corrections,
+      or stock pulled out for any reason other than a sale.
+      --------------------------------------------------------------------- */
+   function openDeductModal(id) {
+     const product = PRODUCTS.find((p) => p.id === id);
+     if (!product) return;
+   
+     document.getElementById("deductForm").reset();
+     document.getElementById("deductError").textContent = "";
+     document.getElementById("deductId").value = id;
+     document.getElementById("deductItemInfo").textContent =
+       `${product.name} (${product.size}/${product.color}) — currently ${product.stock} in stock.`;
+     document.getElementById("deductQty").value = 1;
+     document.getElementById("deductQty").max = product.stock;
+   
+     document.getElementById("deductModal").classList.add("show");
+     document.getElementById("deductOverlay").classList.add("show");
+   }
+   
+   function closeDeductModal() {
+     document.getElementById("deductModal").classList.remove("show");
+     document.getElementById("deductOverlay").classList.remove("show");
+   }
+   
+   async function handleDeductSubmit(e) {
+     e.preventDefault();
+     const id = document.getElementById("deductId").value;
+     const qty = Number(document.getElementById("deductQty").value);
+     const errorEl = document.getElementById("deductError");
+   
+     const product = PRODUCTS.find((p) => p.id === id);
+     if (!product) return;
+   
+     if (!qty || qty < 1) {
+       errorEl.textContent = "Enter how many units to remove.";
+       return;
+     }
+     if (qty > product.stock) {
+       errorEl.textContent = `Only ${product.stock} in stock — can't remove more than that.`;
+       return;
+     }
+   
+     const { error } = await sb.from("products").update({ stock: product.stock - qty }).eq("id", id);
+   
+     if (error) {
+       errorEl.textContent = "Couldn't update stock: " + error.message;
+       return;
+     }
+   
+     closeDeductModal();
+     loadAll();
+   }
+   
+   function openProductModal(id) {
+     const form = document.getElementById("productForm");
+     form.reset();
+     document.getElementById("productError").textContent = "";
+   
+     if (id) {
+       const product = PRODUCTS.find((p) => p.id === id);
+       if (!product) return;
+       document.getElementById("productModalTitle").textContent = "Edit Item";
+       document.getElementById("productId").value = product.id;
+       document.getElementById("pName").value = product.name;
+       document.getElementById("pSize").value = product.size;
+       document.getElementById("pColor").value = product.color;
+       document.getElementById("pCost").value = product.cost;
+       document.getElementById("pPrice").value = product.price;
+       document.getElementById("pStock").value = product.stock;
+       document.getElementById("pImageUrl").value = product.image_url || "";
+       showImagePreview(product.image_url);
+     } else {
+       document.getElementById("productModalTitle").textContent = "Add New Item";
+       document.getElementById("productId").value = "";
+       showImagePreview(null);
+     }
+   
+     document.getElementById("imageUploadStatus").textContent = "";
+     document.getElementById("productModal").classList.add("show");
+     document.getElementById("productOverlay").classList.add("show");
+   }
+   
+   function closeProductModal() {
+     document.getElementById("productModal").classList.remove("show");
+     document.getElementById("productOverlay").classList.remove("show");
+   }
+   
+   function showImagePreview(url) {
+     const wrap = document.getElementById("pImagePreviewWrap");
+     const img = document.getElementById("pImagePreview");
+     if (url) {
+       img.src = url;
+       wrap.classList.remove("hidden");
+     } else {
+       img.src = "";
+       wrap.classList.add("hidden");
+     }
+   }
+   
+   /* ---------------------------------------------------------------------
+      Image upload — sends the file straight to Supabase Storage
+      (bucket "product-images", see supabase-schema-storage.sql) and drops
+      the resulting public URL into the same field Save Item reads from.
+      --------------------------------------------------------------------- */
+   async function handleImageFileChange(e) {
+     const file = e.target.files[0];
+     if (!file) return;
+   
+     const statusEl = document.getElementById("imageUploadStatus");
+     statusEl.textContent = "Uploading…";
+   
+     const ext = file.name.split(".").pop();
+     const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+   
+     const { error: uploadError } = await sb.storage.from("product-images").upload(path, file, {
+       cacheControl: "3600",
+       upsert: false,
+     });
+   
+     if (uploadError) {
+       statusEl.textContent = "Upload failed: " + uploadError.message;
+       return;
+     }
+   
+     const { data } = sb.storage.from("product-images").getPublicUrl(path);
+     document.getElementById("pImageUrl").value = data.publicUrl;
+     showImagePreview(data.publicUrl);
+     statusEl.textContent = "Uploaded ✓";
+   }
+   
+   async function handleProductSubmit(e) {
+     e.preventDefault();
+     const id = document.getElementById("productId").value;
+     const name = document.getElementById("pName").value.trim();
+     const size = document.getElementById("pSize").value.trim();
+     const color = document.getElementById("pColor").value.trim();
+     const cost = Number(document.getElementById("pCost").value);
+     const price = Number(document.getElementById("pPrice").value);
+     const stock = Number(document.getElementById("pStock").value);
+     const imageUrl = document.getElementById("pImageUrl").value.trim();
+     const errorEl = document.getElementById("productError");
+   
+     if (!name || !size || !color || isNaN(cost) || isNaN(price) || isNaN(stock) || stock < 0) {
+       errorEl.textContent = "Please check the fields — are they all complete and valid?";
+       return;
+     }
+   
+     const payload = { name, size, color, cost, price, stock, image_url: imageUrl || null };
+     const { error } = id
+       ? await sb.from("products").update(payload).eq("id", id)
+       : await sb.from("products").insert(payload);
+   
+     if (error) {
+       errorEl.textContent = "Couldn't save: " + error.message;
+       return;
+     }
+   
+     closeProductModal();
+     loadAll();
+   }
+   
+   async function deleteProduct(id) {
+     const product = PRODUCTS.find((p) => p.id === id);
+     if (!product) return;
+   
+     const warn =
+       product.stock > 0
+         ? `"${product.name}" (${product.size}/${product.color}) still has ${product.stock} unit(s) left. Delete it anyway?`
+         : `Delete "${product.name}" (${product.size}/${product.color})?`;
+   
+     if (!confirm(warn)) return;
+   
+     const { error } = await sb.from("products").delete().eq("id", id);
+     if (error) {
+       alert("Couldn't delete: " + error.message);
+       return;
+     }
+     loadAll();
+   }
+   
+   /* ---------------------------------------------------------------------
+      Orders
+      --------------------------------------------------------------------- */
+   function statusBadge(order) {
+     if (order.payment_status === "Refunded") {
+       return `<span class="badge refunded">Refunded</span>`;
+     }
+     // Cancelled after already being paid (usually GCash) — flag it until
+     // the admin confirms the money's actually been sent back.
+     if (order.payment_status === "Paid" && order.order_status === "Cancelled") {
+       return `<span class="badge needs-refund" data-mark-refunded="${order.id}" title="Click once the refund has been sent">Needs Refund</span>`;
+     }
+     if (order.payment_status === "Paid") {
+       return `<span class="badge paid">Paid</span>`;
+     }
+     // Cancelled before any money came in (e.g. a GCash payment that
+     // expired) — nothing to collect, so no clickable "mark Paid" here.
+     if (order.order_status === "Cancelled") {
+       return `<span class="badge refunded" title="Cancelled before payment — nothing was charged">Cancelled</span>`;
+     }
+     // COD + Delivery is marked Paid by the rider's own account, on their
+     // phone, at the moment they actually collect the cash — not here.
+     // COD + Pickup never touches a rider at all, so the admin still
+     // marks it Paid themselves once the customer pays in person.
+     // See site/driver/ and supabase-schema-delivery-drivers.sql.
+     if (order.payment_method === "COD" && order.fulfillment_method === "Delivery") {
+       return `<span class="badge pending" title="Marked Paid by the rider on drop-off">Pending (COD)</span>`;
+     }
+     return `<span class="badge pending" data-toggle-status="${order.id}" title="Click to mark Paid">Pending</span>`;
+   }
+   
+   function orderRowHtml(o) {
+     const summary = itemsSummary(o).replaceAll("; ", "<br>");
+     return `
+       <tr>
+         <td class="mono">${o.order_code}</td>
+         <td>${o.full_name}<br><span class="opt">${o.contact_number || ""}</span></td>
+         <td>${summary}</td>
+         <td class="mono">${peso(o.total)}</td>
+         <td>${o.payment_method} · ${o.fulfillment_method || "Delivery"}<br>${statusBadge(o)}</td>
+         <td>${fulfillmentSelect(o)}</td>
+         <td>${formatDate(o.created_at)}</td>
+         <td><button data-view-order="${o.id}">View</button></td>
+       </tr>`;
+   }
+   
+   // Still-open orders needing admin action; completed ones (Delivered /
+   // Cancelled) are done and just kept for reference.
+   const ACTIVE_STATUSES = ["Pending", "Processing", "Out for Delivery"];
+   
+   // Search box + filters above the Orders table — lets the admin quickly
+   // find one customer's order, or narrow the list to just Pickup or just
+   // Delivery, instead of scrolling the whole list.
+   function getFilteredOrders() {
+     const term = (document.getElementById("orderSearchInput")?.value || "").trim().toLowerCase();
+     const statusFilter = document.getElementById("orderStatusFilter")?.value || "";
+     const fulfillmentFilter = document.getElementById("fulfillmentMethodFilter")?.value || "";
+
+     return ORDERS.filter((o) => {
+       if (statusFilter && (o.order_status || "Pending") !== statusFilter) return false;
+       if (fulfillmentFilter && (o.fulfillment_method || "Delivery") !== fulfillmentFilter) return false;
+       if (!term) return true;
+       const haystack = [o.order_code, o.full_name, o.contact_number, o.email]
+         .filter(Boolean)
+         .join(" ")
+         .toLowerCase();
+       return haystack.includes(term);
+     });
+   }
+
+   function renderOrders() {
+     const body = document.querySelector("#ordersTable tbody");
+
+     if (ORDERS.length === 0) {
+       body.innerHTML = `<tr class="empty-row"><td colspan="8">No orders yet.</td></tr>`;
+       return;
+     }
+
+     const filtered = getFilteredOrders();
+
+     if (filtered.length === 0) {
+       body.innerHTML = `<tr class="empty-row"><td colspan="8">No orders match your search/filter.</td></tr>`;
+       return;
+     }
+
+     // Newest/oldest first, per the toolbar's sort control — sorted once
+     // here, then the active/completed split below just preserves it.
+     const sortOrder = document.getElementById("orderSortOrder")?.value || "desc";
+     const sorted = [...filtered].sort((a, b) =>
+       sortOrder === "asc" ? new Date(a.created_at) - new Date(b.created_at) : new Date(b.created_at) - new Date(a.created_at)
+     );
+
+     const active = sorted.filter((o) => ACTIVE_STATUSES.includes(o.order_status || "Pending"));
+     const completed = sorted.filter((o) => !ACTIVE_STATUSES.includes(o.order_status || "Pending"));
+
+     const activeRows = active.map(orderRowHtml).join("");
+     const divider = completed.length
+       ? `<tr class="section-divider-row"><td colspan="8">Completed (Delivered / Cancelled)</td></tr>`
+       : "";
+     const completedRows = completed.map(orderRowHtml).join("");
+   
+     body.innerHTML = (activeRows || `<tr class="empty-row"><td colspan="8">No active orders — all caught up.</td></tr>`) + divider + completedRows;
+   
+     attachStatusToggles();
+     attachFulfillmentSelects();
+   
+     document.querySelectorAll("[data-view-order]").forEach((btn) => {
+       btn.addEventListener("click", () => openOrderDetail(btn.dataset.viewOrder));
+     });
+   }
+   
+   /* ---------------------------------------------------------------------
+      Fulfillment status — the shipping-stage tracking, separate from
+      whether the order has been paid. New orders start at "Pending" —
+      the admin's signal that it hasn't been looked at yet.
+
+      Delivery keeps the full stage list (Pending → Processing → Out for
+      Delivery → Delivered, or Cancelled), since that's genuinely a
+      multi-day process worth narrating. Pickup is simplified to just
+      Pending → Delivered (picked up) or Cancelled — there's no transit
+      stage to track for something the customer collects in person.
+      --------------------------------------------------------------------- */
+   const ORDER_STATUSES_DELIVERY = ["Pending", "Processing", "Out for Delivery", "Delivered", "Cancelled"];
+   const ORDER_STATUSES_PICKUP = ["Pending", "Delivered", "Cancelled"];
+
+   // The database always stores "Out for Delivery" regardless of
+   // fulfillment method — this just relabels it "Ready for Pickup" in
+   // the UI for Pickup orders, since no rider is ever involved for those.
+   function statusLabel(status, fulfillmentMethod) {
+     if (status === "Out for Delivery" && fulfillmentMethod === "Pickup") {
+       return "Ready for Pickup";
+     }
+     return status;
+   }
+
+   function fulfillmentBadge(status, fulfillmentMethod) {
+     status = status || "Pending"; // falls back gracefully if the column isn't there yet
+     const cls = "fulfillment-" + status.replace(/\s+/g, "-").toLowerCase();
+     return `<span class="badge ${cls}">${statusLabel(status, fulfillmentMethod)}</span>`;
+   }
+
+   function fulfillmentSelect(order) {
+     const current = order.order_status || "Pending";
+     const isPickup = order.fulfillment_method === "Pickup";
+     let statuses = isPickup ? ORDER_STATUSES_PICKUP : ORDER_STATUSES_DELIVERY;
+     // Safety net: an older/edge-case order might already sit at a stage
+     // this shorter list doesn't offer (e.g. a Pickup order still at "Out
+     // for Delivery" from before this simplification) — keep it
+     // selectable so the dropdown never silently mismatches reality.
+     if (!statuses.includes(current)) statuses = [current, ...statuses];
+
+     const options = statuses.map(
+       (s) => `<option value="${s}" ${s === current ? "selected" : ""}>${statusLabel(s, order.fulfillment_method)}</option>`
+     ).join("");
+     return `<select class="fulfillment-select fulfillment-${current.replace(/\s+/g, "-").toLowerCase()}" data-order-id="${order.id}">${options}</select>`;
+   }
+   
+   function attachFulfillmentSelects() {
+     document.querySelectorAll(".fulfillment-select").forEach((select) => {
+       if (select.dataset.bound) return;
+       select.dataset.bound = "1";
+       select.addEventListener("change", async () => {
+         const newStatus = select.value;
+         const orderId = select.dataset.orderId;
+   
+         // Cancelling goes through a dedicated function that also puts the
+         // stock back — a plain status update would leave it deducted.
+         const { error } =
+           newStatus === "Cancelled"
+             ? await sb.rpc("cancel_order", { p_order_id: orderId })
+             : await sb.from("orders").update({ order_status: newStatus }).eq("id", orderId);
+   
+         if (error) {
+           alert("Couldn't update fulfillment status: " + error.message);
+           return;
+         }
+         loadAll();
+       });
+     });
+   }
+   
+   /* ---------------------------------------------------------------------
+      Order detail — full customer info so it's always traceable who
+      placed an order and how to reach them (name, contact, email,
+      address, notes), not just the summary shown in the table.
+      --------------------------------------------------------------------- */
+   function openOrderDetail(id) {
+     const order = ORDERS.find((o) => o.id === id);
+     if (!order) return;
+   
+     const itemsHtml = order.items
+       .map((it) => `<div class="row"><span>${it.name} (${it.size}/${it.color}) × ${it.qty}</span><span>${peso(it.price * it.qty)}</span></div>`)
+       .join("");
+   
+     document.getElementById("orderDetailBody").innerHTML = `
+       <div class="order-detail-top">
+         <span class="mono">${order.order_code}</span>
+         ${statusBadge(order)}
+       </div>
+   
+       <label class="fulfillment-label">Fulfillment status
+         ${fulfillmentSelect(order)}
+       </label>
+   
+       <div class="order-detail-grid">
+         <div>
+           <p class="opt">Full name</p>
+           <p>${order.full_name}</p>
+         </div>
+         <div>
+           <p class="opt">Contact number</p>
+           <p>${order.contact_number || "—"}</p>
+         </div>
+         <div>
+           <p class="opt">Email</p>
+           <p>${order.email || "—"}</p>
+         </div>
+         <div>
+           <p class="opt">Payment method</p>
+           <p>${order.payment_method}</p>
+         </div>
+         <div>
+           <p class="opt">Fulfillment method</p>
+           <p>${order.fulfillment_method || "Delivery"}</p>
+         </div>
+         <div class="span-2">
+           <p class="opt">Delivery address</p>
+           <p>${order.address || "—"}</p>
+         </div>
+         <div class="span-2">
+           <p class="opt">Order notes</p>
+           <p>${order.order_notes || "—"}</p>
+         </div>
+       </div>
+   
+       <div class="order-summary">
+         ${itemsHtml}
+         <div class="row total"><span>Total</span><span>${peso(order.total)}</span></div>
+       </div>
+   
+       <p class="opt">Placed ${formatDate(order.created_at)}</p>
+     `;
+   
+     attachStatusToggles();
+     attachFulfillmentSelects();
+     document.getElementById("orderDetailModal").classList.add("show");
+     document.getElementById("orderDetailOverlay").classList.add("show");
+   }
+   
+   function closeOrderDetail() {
+     document.getElementById("orderDetailModal").classList.remove("show");
+     document.getElementById("orderDetailOverlay").classList.remove("show");
+   }
+   
+   function attachStatusToggles() {
+     document.querySelectorAll("[data-toggle-status]").forEach((el) => {
+       if (el.dataset.bound) return; // avoid double-binding across re-renders
+       el.dataset.bound = "1";
+       el.addEventListener("click", async () => {
+         const { error } = await sb.from("orders").update({ payment_status: "Paid" }).eq("id", el.dataset.toggleStatus);
+         if (error) {
+           alert("Couldn't update: " + error.message);
+           return;
+         }
+         loadAll();
+       });
+     });
+   
+     document.querySelectorAll("[data-mark-refunded]").forEach((el) => {
+       if (el.dataset.bound) return;
+       el.dataset.bound = "1";
+       el.addEventListener("click", async () => {
+         if (!confirm("Mark this order as refunded? Only click this once you've actually sent the money back.")) return;
+         const { error } = await sb.from("orders").update({ payment_status: "Refunded" }).eq("id", el.dataset.markRefunded);
+         if (error) {
+           alert("Couldn't update: " + error.message);
+           return;
+         }
+         loadAll();
+       });
+     });
+   }
+   
+   /* ---------------------------------------------------------------------
+      Realtime — auto-refresh when the storefront (or another admin tab)
+      changes products/orders, no manual reload needed. Order changes
+      also surface as a toast, since this is the "notify the admin"
+      channel: no email-to-owner setup needed, just keep the dashboard
+      tab open.
+      --------------------------------------------------------------------- */
+   function showToast(message) {
+     const container = document.getElementById("toastContainer");
+     if (!container) return;
+
+     const toast = document.createElement("div");
+     toast.className = "toast";
+     toast.textContent = message;
+     container.appendChild(toast);
+
+     setTimeout(() => toast.classList.add("show"), 10);
+     setTimeout(() => {
+       toast.classList.remove("show");
+       setTimeout(() => toast.remove(), 300);
+     }, 6000);
+   }
+
+   function handleOrdersRealtimeEvent(payload) {
+     if (payload.eventType === "INSERT") {
+       showToast(`New order ${payload.new.order_code} — ${peso(payload.new.total)}`);
+     } else if (payload.eventType === "UPDATE") {
+       const wasPaid = payload.old?.payment_status === "Paid";
+       const nowPaid = payload.new.payment_status === "Paid";
+       const wasDelivered = payload.old?.order_status === "Delivered";
+       const nowDelivered = payload.new.order_status === "Delivered";
+
+       if (!wasPaid && nowPaid && nowDelivered) {
+         // COD, marked by the driver — payment and delivery happen together.
+         showToast(`${payload.new.order_code} marked Paid & Delivered (COD)`);
+       } else if (!wasPaid && nowPaid) {
+         showToast(`${payload.new.order_code} marked Paid (${payload.new.payment_method})`);
+       } else if (!wasDelivered && nowDelivered) {
+         showToast(`${payload.new.order_code} marked Delivered`);
+       }
+     }
+     loadAll();
+   }
+
+   function subscribeRealtime() {
+     sb.channel("admin-products")
+       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, loadAll)
+       .subscribe();
+
+     sb.channel("admin-orders")
+       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, handleOrdersRealtimeEvent)
+       .subscribe();
+   }
+   
+   /* ---------------------------------------------------------------------
+      Init
+      --------------------------------------------------------------------- */
+   document.addEventListener("DOMContentLoaded", async () => {
+     await checkAuthAndInit();
+     subscribeRealtime();
+
+     document.getElementById("logoutBtn").addEventListener("click", handleLogout);
+   
+     document.querySelectorAll(".nav-item[data-tab]").forEach((btn) => {
+       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+     });
+   
+     // Analytics controls
+     syncAnalyticsRangeInputs();
+     document.querySelectorAll(".granularity-btn").forEach((btn) => {
+       btn.addEventListener("click", () => setGranularity(btn.dataset.granularity));
+     });
+     document.getElementById("applyRangeBtn").addEventListener("click", applyCustomRange);
+     document.getElementById("clearRangeBtn").addEventListener("click", clearCustomRange);
+     document.getElementById("exportAnalyticsCsv").addEventListener("click", exportAnalyticsCsv);
+     document.getElementById("exportOrdersCsv").addEventListener("click", exportOrdersCsv);
+   
+     document.getElementById("addProductBtn").addEventListener("click", () => openProductModal(null));
+     document.getElementById("closeProductModal").addEventListener("click", closeProductModal);
+     document.getElementById("productOverlay").addEventListener("click", closeProductModal);
+     document.getElementById("productForm").addEventListener("submit", handleProductSubmit);
+     document.getElementById("pImageFile").addEventListener("change", handleImageFileChange);
+     document.getElementById("pImageUrl").addEventListener("input", (e) => showImagePreview(e.target.value.trim() || null));
+   
+     document.getElementById("closeRestockModal").addEventListener("click", closeRestockModal);
+     document.getElementById("restockOverlay").addEventListener("click", closeRestockModal);
+     document.getElementById("restockForm").addEventListener("submit", handleRestockSubmit);
+   
+     document.getElementById("closeDeductModal").addEventListener("click", closeDeductModal);
+     document.getElementById("deductOverlay").addEventListener("click", closeDeductModal);
+     document.getElementById("deductForm").addEventListener("submit", handleDeductSubmit);
+   
+     document.getElementById("closeOrderDetailModal").addEventListener("click", closeOrderDetail);
+     document.getElementById("orderDetailOverlay").addEventListener("click", closeOrderDetail);
+   
+     document.getElementById("orderSearchInput").addEventListener("input", renderOrders);
+     document.getElementById("orderStatusFilter").addEventListener("change", renderOrders);
+     document.getElementById("fulfillmentMethodFilter").addEventListener("change", renderOrders);
+     document.getElementById("orderSortOrder").addEventListener("change", renderOrders);
+   });
