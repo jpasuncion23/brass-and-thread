@@ -204,6 +204,7 @@ async function sendEmail(to: string, subject: string, html: string) {
     console.error("Resend error:", errText);
     return new Response(errText, { status: 502 });
   }
+  console.log("Email sent via Resend (test sender — only reaches the Resend account owner):", subject);
   return new Response("sent", { status: 200 });
 }
 
@@ -212,6 +213,7 @@ Deno.serve(async (req: Request) => {
   // this function should be deployed with "Verify JWT" turned OFF,
   // since the triggers calling it aren't a logged-in browser session.
   if (req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET) {
+    console.error("Unauthorized — x-webhook-secret doesn't match the WEBHOOK_SECRET secret");
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -227,8 +229,12 @@ Deno.serve(async (req: Request) => {
     return new Response("Bad payload", { status: 400 });
   }
   if (!order.email) {
+    console.log(`Skipped ${order.order_code} — no email on file`);
     return new Response("Order has no email on file", { status: 200 });
   }
+  console.log(
+    `Email for ${order.order_code} via ${GMAIL_USER && GMAIL_APP_PASSWORD ? "Gmail" : BREVO_API_KEY && SENDER_EMAIL ? "Brevo" : "Resend"}`
+  );
 
   // ----- Order just placed (AFTER INSERT trigger) -----
   if (payload.type === "order_placed") {
@@ -247,6 +253,7 @@ Deno.serve(async (req: Request) => {
   if (order.order_status === previous.order_status) {
     const justPaid = order.payment_status === "Paid" && previous.payment_status !== "Paid";
     if (!justPaid || order.payment_method === "COD") {
+      console.log(`Skipped ${order.order_code} — no status change worth emailing`);
       return new Response("No status change — nothing to send", { status: 200 });
     }
     return sendEmail(
@@ -265,6 +272,7 @@ Deno.serve(async (req: Request) => {
   const isPickup = order.fulfillment_method === "Pickup";
   const isIntermediateStage = order.order_status === "Processing" || order.order_status === "Out for Delivery";
   if (isPickup && isIntermediateStage) {
+    console.log(`Skipped ${order.order_code} — Pickup orders only get Delivered/Cancelled emails`);
     return new Response("Pickup order — skipping intermediate stage email", { status: 200 });
   }
 
