@@ -99,7 +99,6 @@ function renderOrders(orders) {
           <input
             type="file"
             accept="image/*"
-            capture="environment"
             class="proof-photo-input hidden"
             data-id="${o.id}"
             data-code="${o.order_code}"
