@@ -1193,6 +1193,18 @@
     margin-bottom: 16px;
   }
   
+  /* Same stamp, re-inked for a GCash order that's still being checked
+     or that ended up cancelled (see setConfirmHeader in script.js). */
+  .confirm-stamp.pending {
+    color: var(--warn);
+    border-color: var(--warn);
+  }
+
+  .confirm-stamp.cancelled {
+    color: #c27a68;
+    border-color: #c27a68;
+  }
+
   .modal-confirm h3 {
     font-size: 1.5rem;
     margin-bottom: 12px;

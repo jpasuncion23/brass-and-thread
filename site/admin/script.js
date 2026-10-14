@@ -111,7 +111,7 @@
      const totalUnits = PRODUCTS.reduce((sum, p) => sum + p.stock, 0);
      const lowStock = PRODUCTS.filter((p) => p.stock > 0 && p.stock <= LOW_STOCK_THRESHOLD).length;
      const soldOut = PRODUCTS.filter((p) => p.stock <= 0).length;
-     const pending = ORDERS.filter((o) => o.payment_status === "Pending").length;
+     const pending = ORDERS.filter((o) => o.payment_status === "Pending" && o.order_status !== "Cancelled").length;
      // Aligned with Analytics: only orders that are both Delivered and
      // Paid count as realized sales. (Previously this counted every
      // non-cancelled order, which double-counted unpaid/in-transit orders.)
@@ -720,6 +720,11 @@
      }
      if (order.payment_status === "Paid") {
        return `<span class="badge paid">Paid</span>`;
+     }
+     // Cancelled before any money came in (e.g. a GCash payment that
+     // expired) — nothing to collect, so no clickable "mark Paid" here.
+     if (order.order_status === "Cancelled") {
+       return `<span class="badge refunded" title="Cancelled before payment — nothing was charged">Cancelled</span>`;
      }
      // COD + Delivery is marked Paid by the rider's own account, on their
      // phone, at the moment they actually collect the cash — not here.

@@ -3,9 +3,11 @@
 // -------------------------------------------------------------------------
 // Deploy this in Supabase Dashboard → Edge Functions → Create function
 // (or open the existing one) → paste this file's content → Deploy. Set
-// the two secrets it needs (RESEND_API_KEY, WEBHOOK_SECRET) under Edge
-// Functions → Manage secrets. See DEPLOY.md for the full step-by-step,
-// including the two database triggers that call this.
+// its secrets under Edge Functions → Manage secrets: WEBHOOK_SECRET, plus
+// one way to send, tried in this order: GMAIL_USER + GMAIL_APP_PASSWORD
+// (the shop's own Gmail), BREVO_API_KEY + SENDER_EMAIL, or
+// RESEND_API_KEY (test sender — only reaches the Resend account owner).
+// See DEPLOY.md for the two database triggers that call this.
 //
 // This function is called by two Postgres triggers (never directly by
 // the browser):
@@ -14,19 +16,45 @@
 //      email the moment someone checks out. Payload: { type:
 //      "order_placed", record: <new order row> }.
 //   2. supabase-schema-order-email-trigger.sql — AFTER UPDATE on orders,
-//      only when order_status actually changed. Sends the "your order
-//      is now X" email as it moves through fulfillment. Payload: {
-//      record: <new row>, old_record: <previous row> }.
+//      when order_status or payment_status changed (the payment_status
+//      part comes from supabase-schema-gcash-auto-cancel.sql). Sends the
+//      "your order is now X" email as it moves through fulfillment, or a
+//      "payment received" email when a GCash / Bank Transfer order gets
+//      marked Paid. Payload: { record: <new row>, old_record: <previous
+//      row> }.
 // =========================================================================
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET");
+import nodemailer from "npm:nodemailer@6.9.16";
 
-// Resend's shared test sender — works out of the box, no domain setup
-// needed, and (unlike most providers' sandbox mode) can email anyone.
-// Swap this for your own verified domain later if you want a branded
-// "from" address.
-const FROM_EMAIL = "Brass & Thread <onboarding@resend.dev>";
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+// Trimmed: a newline pasted into the dashboard along with the value
+// (easy to do, invisible there) would otherwise reject every call.
+const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET")?.trim();
+
+// Gmail SMTP — the same thing PHPMailer does: send straight from the
+// shop's own Gmail, so mail lands like any normal Gmail message. Used
+// first whenever both secrets are set:
+//   GMAIL_USER         — the Gmail address, e.g. brassthread@gmail.com
+//   GMAIL_APP_PASSWORD — myaccount.google.com/apppasswords (16 letters;
+//                        needs 2-Step Verification on). Not the normal
+//                        Gmail password.
+// Port 465 (implicit TLS) — Supabase blocks outgoing 25 and 587.
+const GMAIL_USER = Deno.env.get("GMAIL_USER")?.trim();
+const GMAIL_APP_PASSWORD = Deno.env.get("GMAIL_APP_PASSWORD")?.replace(/\s+/g, "");
+
+// Brevo (brevo.com) — used when Gmail isn't set up but both of these
+// are. Brevo can send to any customer from a single verified sender
+// address (e.g. the shop's Gmail), no domain of our own needed:
+//   BREVO_API_KEY — Brevo → SMTP & API → API Keys
+//   SENDER_EMAIL  — the address verified under Brevo → Senders
+const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY")?.trim();
+const SENDER_EMAIL = Deno.env.get("SENDER_EMAIL")?.trim();
+const SENDER_NAME = "Brass & Thread";
+
+// Resend's shared test sender — the fallback when neither is set up.
+// Works with no domain setup, but Resend only delivers mail from it to
+// the Resend account owner's own address, never to other customers.
+const FROM_EMAIL = `${SENDER_NAME} <onboarding@resend.dev>`;
 
 const STATUS_MESSAGE: Record<string, string> = {
   Processing: "We've got your order and it's being prepared.",
@@ -57,7 +85,7 @@ function statusMessage(status: string, fulfillmentMethod: string): string {
 const PAYMENT_NOTE: Record<string, string> = {
   COD: "Pay in cash when your order arrives — no need to send anything ahead of time.",
   GCash:
-    "Please complete your GCash payment using the account shown on the page right after you ordered, and use your order number below as the reference.",
+    "If you finished paying on the GCash checkout page, you're all set — we'll email you once the payment is confirmed. If it didn't go through, message us and we'll help you complete it.",
   "Bank Transfer":
     "Please complete your bank transfer using the account shown on the page right after you ordered, and use your order number below as the reference.",
 };
@@ -121,6 +149,49 @@ function statusChangedHtml(order: any, message: string): string {
 }
 
 async function sendEmail(to: string, subject: string, html: string) {
+  if (GMAIL_USER && GMAIL_APP_PASSWORD) {
+    try {
+      const transport = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+      });
+      await transport.sendMail({ from: `"${SENDER_NAME}" <${GMAIL_USER}>`, to, subject, html });
+    } catch (err) {
+      console.error("Gmail SMTP error:", err instanceof Error ? err.message : err);
+      return new Response("Gmail SMTP error", { status: 502 });
+    }
+    console.log("Email sent via Gmail:", subject);
+    return new Response("sent", { status: 200 });
+  }
+
+  if (BREVO_API_KEY && SENDER_EMAIL) {
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": BREVO_API_KEY,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+        to: [{ email: to }],
+        replyTo: { email: SENDER_EMAIL },
+        subject,
+        htmlContent: html,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Brevo error:", errText);
+      return new Response(errText, { status: 502 });
+    }
+    console.log("Email sent via Brevo:", subject);
+    return new Response("sent", { status: 200 });
+  }
+
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -135,6 +206,7 @@ async function sendEmail(to: string, subject: string, html: string) {
     console.error("Resend error:", errText);
     return new Response(errText, { status: 502 });
   }
+  console.log("Email sent via Resend (test sender — only reaches the Resend account owner):", subject);
   return new Response("sent", { status: 200 });
 }
 
@@ -142,7 +214,8 @@ Deno.serve(async (req: Request) => {
   // Shared-secret check instead of Supabase's own JWT verification —
   // this function should be deployed with "Verify JWT" turned OFF,
   // since the triggers calling it aren't a logged-in browser session.
-  if (req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET) {
+  if (!WEBHOOK_SECRET || req.headers.get("x-webhook-secret")?.trim() !== WEBHOOK_SECRET) {
+    console.error("Unauthorized — x-webhook-secret doesn't match the WEBHOOK_SECRET secret");
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -158,19 +231,41 @@ Deno.serve(async (req: Request) => {
     return new Response("Bad payload", { status: 400 });
   }
   if (!order.email) {
+    console.log(`Skipped ${order.order_code} — no email on file`);
     return new Response("Order has no email on file", { status: 200 });
   }
+  console.log(
+    `Email for ${order.order_code} via ${GMAIL_USER && GMAIL_APP_PASSWORD ? "Gmail" : BREVO_API_KEY && SENDER_EMAIL ? "Brevo" : "Resend"}`
+  );
 
   // ----- Order just placed (AFTER INSERT trigger) -----
   if (payload.type === "order_placed") {
     return sendEmail(order.email, `Order ${order.order_code} received — thank you!`, orderPlacedHtml(order));
   }
 
-  // ----- Fulfillment status changed (AFTER UPDATE trigger) -----
   const previous = payload.old_record;
-  if (!previous || order.order_status === previous.order_status) {
-    return new Response("No status change — nothing to send", { status: 200 });
+  if (!previous) {
+    return new Response("Bad payload", { status: 400 });
   }
+
+  // ----- Payment confirmed (AFTER UPDATE trigger, payment_status) -----
+  // COD gets marked Paid together with Delivered, and that Delivered
+  // email already covers it — so only GCash / Bank Transfer get this,
+  // and only when fulfillment didn't change in the same update.
+  if (order.order_status === previous.order_status) {
+    const justPaid = order.payment_status === "Paid" && previous.payment_status !== "Paid";
+    if (!justPaid || order.payment_method === "COD") {
+      console.log(`Skipped ${order.order_code} — no status change worth emailing`);
+      return new Response("No status change — nothing to send", { status: 200 });
+    }
+    return sendEmail(
+      order.email,
+      `Order ${order.order_code} — Payment received`,
+      statusChangedHtml(order, `We've received your ${order.payment_method} payment — thank you! We'll start preparing your order.`)
+    );
+  }
+
+  // ----- Fulfillment status changed (AFTER UPDATE trigger) -----
 
   // Pickup has no multi-day transit to narrate — skip the in-between
   // stage emails (Processing, Ready for Pickup) and only email once it's
@@ -179,10 +274,18 @@ Deno.serve(async (req: Request) => {
   const isPickup = order.fulfillment_method === "Pickup";
   const isIntermediateStage = order.order_status === "Processing" || order.order_status === "Out for Delivery";
   if (isPickup && isIntermediateStage) {
+    console.log(`Skipped ${order.order_code} — Pickup orders only get Delivered/Cancelled emails`);
     return new Response("Pickup order — skipping intermediate stage email", { status: 200 });
   }
 
-  const message = statusMessage(order.order_status, order.fulfillment_method);
+  // An unpaid GCash order getting Cancelled almost always means the
+  // payment never went through (cancel_unpaid_order) — say so, instead
+  // of a bare "cancelled".
+  const gcashUnpaid =
+    order.order_status === "Cancelled" && order.payment_method === "GCash" && order.payment_status === "Pending";
+  const message = gcashUnpaid
+    ? "Your GCash payment wasn't completed, so this order has been cancelled and the items released. You're welcome to order again anytime."
+    : statusMessage(order.order_status, order.fulfillment_method);
   const label = statusLabel(order.order_status, order.fulfillment_method);
   return sendEmail(order.email, `Order ${order.order_code} — ${label}`, statusChangedHtml(order, message));
 });
