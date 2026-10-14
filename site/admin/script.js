@@ -887,7 +887,7 @@
       placed an order and how to reach them (name, contact, email,
       address, notes), not just the summary shown in the table.
       --------------------------------------------------------------------- */
-   function openOrderDetail(id) {
+   async function openOrderDetail(id) {
      const order = ORDERS.find((o) => o.id === id);
      if (!order) return;
    
@@ -940,14 +940,38 @@
          ${itemsHtml}
          <div class="row total"><span>Total</span><span>${peso(order.total)}</span></div>
        </div>
-   
+
        <p class="opt">Placed ${formatDate(order.created_at)}</p>
+
+       ${order.delivery_proof_path ? `<p class="opt" id="deliveryProofLabel">Proof of delivery</p><div id="deliveryProofPhoto" class="delivery-proof-wrap"><p class="opt">Loading photo…</p></div>` : ""}
      `;
-   
+
      attachStatusToggles();
      attachFulfillmentSelects();
      document.getElementById("orderDetailModal").classList.add("show");
      document.getElementById("orderDetailOverlay").classList.add("show");
+
+     if (order.delivery_proof_path) {
+       loadDeliveryProofPhoto(order.delivery_proof_path);
+     }
+   }
+
+   // The delivery-proofs bucket is private (a rider's doorstep photo of a
+   // customer isn't something to leave at a public URL) — a signed link
+   // is requested fresh each time the admin opens this order, valid for
+   // an hour, instead of ever storing/exposing a permanent public URL.
+   async function loadDeliveryProofPhoto(path) {
+     const wrap = document.getElementById("deliveryProofPhoto");
+     if (!wrap) return;
+
+     const { data, error } = await sb.storage.from("delivery-proofs").createSignedUrl(path, 3600);
+
+     if (error || !data?.signedUrl) {
+       wrap.innerHTML = `<p class="opt">Couldn't load the photo.</p>`;
+       return;
+     }
+
+     wrap.innerHTML = `<img src="${data.signedUrl}" alt="Proof of delivery" class="delivery-proof-image" />`;
    }
    
    function closeOrderDetail() {

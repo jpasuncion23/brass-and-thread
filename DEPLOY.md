@@ -301,6 +301,40 @@ pagkatapos i-check ang sarili nilang GCash/bank app.
 
 ---
 
+## Update — Proof-of-delivery photo (required bago Mark Delivered)
+
+Hindi na basta-basta pwedeng markahan ng driver ang isang Delivery order
+na "Delivered" — kailangan muna niyang mag-upload ng **litrato: yung
+produkto kasama ang mukha ng taong tumanggap**, dire-diretso mula sa
+camera ng phone niya. Hindi tinatanggap ng database mismo ang pag-mark
+kung walang litrato (`PROOF_PHOTO_REQUIRED` error), kaya hindi ito
+puwedeng i-bypass sa browser lang.
+
+Makikita ng admin ang litratong ito sa **order detail view** (i-click
+ang "View" sa isang order) — may lalabas na photo sa ilalim ng
+"Proof of delivery" kung meron. Pribado ang storage bucket nito — hindi
+ito public link, kaya hindi siya binubyahe ng kahit sinong estranghero;
+isang pansamantalang signed link lang ang nilikha pag binuksan ng admin
+ang order, bumabalik sa loob ng isang oras.
+
+1. Buksan ang [supabase-schema-delivery-proof-photo.sql](supabase-schema-delivery-proof-photo.sql),
+   copy lahat, paste sa **SQL Editor** → **Run**. (Kailangan munang
+   tapos na ang Update — Delivery Driver Accounts sa itaas.)
+2. I-deploy ang bagong `site` folder.
+
+### Subukan
+
+1. Mag-log in bilang driver, piliin ang isang order na "Out for
+   Delivery" → i-click ang "Take Photo & Mark Delivered" (o "...Mark
+   Paid & Delivered" kung COD) → dapat bubukas ang camera ng phone (o
+   file picker sa desktop) — kuhanan ng litrato ng produkto + mukha ng
+   tatanggap.
+2. Pagkatapos "i-save," dapat nawala na ang order sa listahan ng driver.
+3. Sa admin Orders tab, i-click ang "View" sa order na iyon — dapat
+   makita ang litrato sa ilalim ng "Proof of delivery."
+
+---
+
 ## Update — One Login Form (customer, admin, driver)
 
 Dati, tatlong hiwalay na login form: storefront (customer), admin

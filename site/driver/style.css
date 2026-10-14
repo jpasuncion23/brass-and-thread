@@ -239,6 +239,13 @@ h1 {
   font-style: italic;
 }
 
+.order-proof-note {
+  color: var(--stamp);
+  font-size: 0.8rem;
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+
 .order-mark-btn {
   margin-top: 14px;
 }
