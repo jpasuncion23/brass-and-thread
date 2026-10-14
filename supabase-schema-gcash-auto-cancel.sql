@@ -72,7 +72,7 @@ begin
       url := 'https://oyujsqzueghivhjgmukn.supabase.co/functions/v1/smart-processor',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
-        'x-webhook-secret', 'bt-webhook-x7k2m9p4qz'
+        'x-webhook-secret', order_email_secret()  -- from Vault, see supabase-schema-email-secret-vault.sql
       ),
       body := jsonb_build_object(
         'record', to_jsonb(new),
