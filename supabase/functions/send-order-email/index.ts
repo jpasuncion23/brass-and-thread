@@ -3,9 +3,10 @@
 // -------------------------------------------------------------------------
 // Deploy this in Supabase Dashboard → Edge Functions → Create function
 // (or open the existing one) → paste this file's content → Deploy. Set
-// the two secrets it needs (RESEND_API_KEY, WEBHOOK_SECRET) under Edge
-// Functions → Manage secrets. See DEPLOY.md for the full step-by-step,
-// including the two database triggers that call this.
+// its secrets under Edge Functions → Manage secrets: WEBHOOK_SECRET, plus
+// either BREVO_API_KEY + SENDER_EMAIL (emails any customer) or
+// RESEND_API_KEY (test sender — only reaches the Resend account owner).
+// See DEPLOY.md for the two database triggers that call this.
 //
 // This function is called by two Postgres triggers (never directly by
 // the browser):
@@ -25,11 +26,19 @@
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET");
 
-// Resend's shared test sender — works out of the box with no domain
-// setup, but Resend only delivers mail from it to the Resend account
-// owner's own address. To email actual customers, verify a domain in
-// Resend and swap this for an address on it.
-const FROM_EMAIL = "Brass & Thread <onboarding@resend.dev>";
+// Brevo (brevo.com) — used instead of Resend whenever both secrets are
+// set. Brevo can send to any customer from a single verified sender
+// address (e.g. the shop's Gmail), no domain of our own needed:
+//   BREVO_API_KEY — Brevo → SMTP & API → API Keys
+//   SENDER_EMAIL  — the address verified under Brevo → Senders
+const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY")?.trim();
+const SENDER_EMAIL = Deno.env.get("SENDER_EMAIL")?.trim();
+const SENDER_NAME = "Brass & Thread";
+
+// Resend's shared test sender — the fallback when Brevo isn't set up.
+// Works with no domain setup, but Resend only delivers mail from it to
+// the Resend account owner's own address, never to other customers.
+const FROM_EMAIL = `${SENDER_NAME} <onboarding@resend.dev>`;
 
 const STATUS_MESSAGE: Record<string, string> = {
   Processing: "We've got your order and it's being prepared.",
@@ -124,6 +133,32 @@ function statusChangedHtml(order: any, message: string): string {
 }
 
 async function sendEmail(to: string, subject: string, html: string) {
+  if (BREVO_API_KEY && SENDER_EMAIL) {
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": BREVO_API_KEY,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+        to: [{ email: to }],
+        replyTo: { email: SENDER_EMAIL },
+        subject,
+        htmlContent: html,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Brevo error:", errText);
+      return new Response(errText, { status: 502 });
+    }
+    console.log("Email sent via Brevo:", subject);
+    return new Response("sent", { status: 200 });
+  }
+
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
