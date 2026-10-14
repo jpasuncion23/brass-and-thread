@@ -9,9 +9,12 @@
 //
 // Then in the PayMongo Dashboard → Developers → Webhooks → Add endpoint,
 // point it at this function's URL (Supabase gives you that URL once
-// deployed) and subscribe it to these two events:
-//   - source.chargeable
+// deployed) and subscribe it to these events:
+//   - checkout_session.payment.paid  (current Checkout flow)
+//   - source.chargeable              (older Source flow, below)
 //   - payment.paid
+//   - payment.failed  (cancels + restocks; needs
+//                      supabase-schema-gcash-auto-cancel.sql)
 //
 // Why two events, not one: GCash (and other e-wallets) go through
 // PayMongo's "Source" resource. Once the customer approves the payment
@@ -33,8 +36,10 @@
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const PAYMONGO_SECRET_KEY = Deno.env.get("PAYMONGO_SECRET_KEY");
-const PAYMONGO_WEBHOOK_SECRET = Deno.env.get("PAYMONGO_WEBHOOK_SECRET");
+// Trimmed: a stray space or newline from copy-pasting into the dashboard
+// would otherwise silently break auth / every signature check.
+const PAYMONGO_SECRET_KEY = Deno.env.get("PAYMONGO_SECRET_KEY")?.trim();
+const PAYMONGO_WEBHOOK_SECRET = Deno.env.get("PAYMONGO_WEBHOOK_SECRET")?.trim();
 
 function paymongoAuthHeader(): string {
   return "Basic " + btoa(`${PAYMONGO_SECRET_KEY}:`);
@@ -93,7 +98,7 @@ async function getOrderBySourceId(sourceId: string): Promise<any | null> {
 }
 
 async function markOrderPaid(orderId: string): Promise<void> {
-  await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`, {
     method: "PATCH",
     headers: {
       apikey: SERVICE_ROLE_KEY!,
@@ -103,6 +108,28 @@ async function markOrderPaid(orderId: string): Promise<void> {
     },
     body: JSON.stringify({ payment_status: "Paid" }),
   });
+  if (!res.ok) {
+    console.error("Marking order Paid failed:", res.status, await res.text());
+  } else {
+    console.log("Order marked Paid:", orderId);
+  }
+}
+
+async function cancelUnpaidOrder(orderId: string): Promise<void> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/cancel_unpaid_order`, {
+    method: "POST",
+    headers: {
+      apikey: SERVICE_ROLE_KEY!,
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ p_order_id: orderId }),
+  });
+  if (!res.ok) {
+    console.error("cancel_unpaid_order failed:", res.status, await res.text());
+  } else {
+    console.log("Cancelled unpaid order:", orderId);
+  }
 }
 
 async function chargeSource(sourceId: string, amountCentavos: number): Promise<void> {
@@ -124,6 +151,8 @@ async function chargeSource(sourceId: string, amountCentavos: number): Promise<v
   });
   if (!res.ok) {
     console.error("PayMongo charge failed:", await res.text());
+  } else {
+    console.log("Charged source:", sourceId);
   }
 }
 
@@ -132,6 +161,11 @@ Deno.serve(async (req: Request) => {
 
   const valid = await verifySignature(rawBody, req.headers.get("paymongo-signature"));
   if (!valid) {
+    console.error(
+      PAYMONGO_WEBHOOK_SECRET
+        ? "Invalid signature - PAYMONGO_WEBHOOK_SECRET doesn't match this webhook's whsk_ secret"
+        : "Invalid signature - PAYMONGO_WEBHOOK_SECRET is not set"
+    );
     return new Response("Invalid signature", { status: 401 });
   }
 
@@ -144,6 +178,7 @@ Deno.serve(async (req: Request) => {
 
   const eventType = event?.data?.attributes?.type;
   const resource = event?.data?.attributes?.data;
+  console.log("Webhook event:", eventType, resource?.id);
 
   // Step 1: the customer approved the GCash payment — the Source is now
   // chargeable. Tell PayMongo to actually move the money.
@@ -152,27 +187,63 @@ Deno.serve(async (req: Request) => {
     const amount = resource?.attributes?.amount;
     if (sourceId && amount) {
       const order = await getOrderBySourceId(sourceId);
-      if (order && order.payment_status !== "Paid") {
+      if (!order) {
+        console.error("No order has payment_provider_ref =", sourceId);
+      } else if (order.payment_status !== "Paid") {
         await chargeSource(sourceId, amount);
       }
     }
     return new Response("ok", { status: 200 });
   }
 
-  // Step 2: PayMongo confirms the charge actually went through — this is
-  // the only point where an order is marked Paid.
-  if (eventType === "payment.paid") {
-    const sourceId = resource?.attributes?.source?.id;
-    if (sourceId) {
-      const order = await getOrderBySourceId(sourceId);
-      if (order && order.payment_status !== "Paid") {
+  // Checkout flow: PayMongo's hosted checkout charges the customer itself,
+  // so there's no step 1 — this one event means the order is paid.
+  if (eventType === "checkout_session.payment.paid") {
+    const sessionId = resource?.id;
+    if (sessionId) {
+      const order = await getOrderBySourceId(sessionId);
+      if (!order) {
+        console.error("No order has payment_provider_ref =", sessionId);
+      } else if (order.payment_status !== "Paid") {
         await markOrderPaid(order.id);
       }
     }
     return new Response("ok", { status: 200 });
   }
 
-  // Anything else (payment.failed, source.cancelled, etc.) — acknowledged,
-  // no action needed. The customer can just retry at checkout.
+  // Step 2: PayMongo confirms the charge actually went through — this is
+  // the only point where an order is marked Paid. (Checkout payments fire
+  // this too, without a source — those are handled by the event above.)
+  if (eventType === "payment.paid") {
+    const sourceId = resource?.attributes?.source?.id;
+    if (sourceId) {
+      const order = await getOrderBySourceId(sourceId);
+      if (!order) {
+        console.error("No order has payment_provider_ref =", sourceId);
+      } else if (order.payment_status !== "Paid") {
+        await markOrderPaid(order.id);
+      }
+    }
+    return new Response("ok", { status: 200 });
+  }
+
+  // Source flow only: the customer approved GCash but the charge itself
+  // failed — cancel the order and put its items back. (In the Checkout
+  // flow a failed attempt has no source and the customer can just retry
+  // on the same page, so it's skipped here.)
+  if (eventType === "payment.failed") {
+    const sourceId = resource?.attributes?.source?.id;
+    if (sourceId) {
+      const order = await getOrderBySourceId(sourceId);
+      if (!order) {
+        console.error("No order has payment_provider_ref =", sourceId);
+      } else {
+        await cancelUnpaidOrder(order.id);
+      }
+    }
+    return new Response("ok", { status: 200 });
+  }
+
+  // Anything else — acknowledged, no action needed.
   return new Response("ok", { status: 200 });
 });

@@ -14,18 +14,21 @@
 //      email the moment someone checks out. Payload: { type:
 //      "order_placed", record: <new order row> }.
 //   2. supabase-schema-order-email-trigger.sql — AFTER UPDATE on orders,
-//      only when order_status actually changed. Sends the "your order
-//      is now X" email as it moves through fulfillment. Payload: {
-//      record: <new row>, old_record: <previous row> }.
+//      when order_status or payment_status changed (the payment_status
+//      part comes from supabase-schema-gcash-auto-cancel.sql). Sends the
+//      "your order is now X" email as it moves through fulfillment, or a
+//      "payment received" email when a GCash / Bank Transfer order gets
+//      marked Paid. Payload: { record: <new row>, old_record: <previous
+//      row> }.
 // =========================================================================
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET");
 
-// Resend's shared test sender — works out of the box, no domain setup
-// needed, and (unlike most providers' sandbox mode) can email anyone.
-// Swap this for your own verified domain later if you want a branded
-// "from" address.
+// Resend's shared test sender — works out of the box with no domain
+// setup, but Resend only delivers mail from it to the Resend account
+// owner's own address. To email actual customers, verify a domain in
+// Resend and swap this for an address on it.
 const FROM_EMAIL = "Brass & Thread <onboarding@resend.dev>";
 
 const STATUS_MESSAGE: Record<string, string> = {
@@ -57,7 +60,7 @@ function statusMessage(status: string, fulfillmentMethod: string): string {
 const PAYMENT_NOTE: Record<string, string> = {
   COD: "Pay in cash when your order arrives — no need to send anything ahead of time.",
   GCash:
-    "Please complete your GCash payment using the account shown on the page right after you ordered, and use your order number below as the reference.",
+    "If you finished paying on the GCash checkout page, you're all set — we'll email you once the payment is confirmed. If it didn't go through, message us and we'll help you complete it.",
   "Bank Transfer":
     "Please complete your bank transfer using the account shown on the page right after you ordered, and use your order number below as the reference.",
 };
@@ -166,11 +169,28 @@ Deno.serve(async (req: Request) => {
     return sendEmail(order.email, `Order ${order.order_code} received — thank you!`, orderPlacedHtml(order));
   }
 
-  // ----- Fulfillment status changed (AFTER UPDATE trigger) -----
   const previous = payload.old_record;
-  if (!previous || order.order_status === previous.order_status) {
-    return new Response("No status change — nothing to send", { status: 200 });
+  if (!previous) {
+    return new Response("Bad payload", { status: 400 });
   }
+
+  // ----- Payment confirmed (AFTER UPDATE trigger, payment_status) -----
+  // COD gets marked Paid together with Delivered, and that Delivered
+  // email already covers it — so only GCash / Bank Transfer get this,
+  // and only when fulfillment didn't change in the same update.
+  if (order.order_status === previous.order_status) {
+    const justPaid = order.payment_status === "Paid" && previous.payment_status !== "Paid";
+    if (!justPaid || order.payment_method === "COD") {
+      return new Response("No status change — nothing to send", { status: 200 });
+    }
+    return sendEmail(
+      order.email,
+      `Order ${order.order_code} — Payment received`,
+      statusChangedHtml(order, `We've received your ${order.payment_method} payment — thank you! We'll start preparing your order.`)
+    );
+  }
+
+  // ----- Fulfillment status changed (AFTER UPDATE trigger) -----
 
   // Pickup has no multi-day transit to narrate — skip the in-between
   // stage emails (Processing, Ready for Pickup) and only email once it's
@@ -182,7 +202,14 @@ Deno.serve(async (req: Request) => {
     return new Response("Pickup order — skipping intermediate stage email", { status: 200 });
   }
 
-  const message = statusMessage(order.order_status, order.fulfillment_method);
+  // An unpaid GCash order getting Cancelled almost always means the
+  // payment never went through (cancel_unpaid_order) — say so, instead
+  // of a bare "cancelled".
+  const gcashUnpaid =
+    order.order_status === "Cancelled" && order.payment_method === "GCash" && order.payment_status === "Pending";
+  const message = gcashUnpaid
+    ? "Your GCash payment wasn't completed, so this order has been cancelled and the items released. You're welcome to order again anytime."
+    : statusMessage(order.order_status, order.fulfillment_method);
   const label = statusLabel(order.order_status, order.fulfillment_method);
   return sendEmail(order.email, `Order ${order.order_code} — ${label}`, statusChangedHtml(order, message));
 });

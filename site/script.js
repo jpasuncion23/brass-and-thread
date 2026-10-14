@@ -677,14 +677,18 @@ async function startInstantPayment(order, contactNumber, fullName, fulfillmentMe
     const data = await res.json();
 
     if (!res.ok || !data.checkout_url) {
-      throw new Error(data.error || "Couldn't start GCash payment.");
+      throw Object.assign(new Error(data.error || "Couldn't start GCash payment."), { fromServer: true });
     }
 
     window.location.href = data.checkout_url;
   } catch (err) {
+    console.error("GCash checkout failed:", err);
+    // Server errors (e.g. the ₱100 minimum) are written for customers —
+    // show them as-is; network failures get the generic message.
+    const reason = err.fromServer ? ` ${err.message}` : " We couldn't open GCash checkout just now.";
     openConfirm(order.order_code, order.total, "GCash", contactNumber, fullName, fulfillmentMethod);
     document.getElementById("confirmText").textContent +=
-      " We couldn't open GCash checkout just now — please message us using the contact number above so we can help you complete payment.";
+      `${reason} Please message us using the contact number above so we can help you complete payment.`;
   }
 }
 
@@ -1079,19 +1083,53 @@ function handlePaymongoReturn() {
   const params = new URLSearchParams(window.location.search);
   const result = params.get("paymongo");
   const orderCode = params.get("order");
+  const orderRef = params.get("ref"); // the order's UUID, only on cancel_url
   if (!result) return;
 
   document.getElementById("confirmText").textContent =
     result === "success"
       ? `Thanks! We're confirming your GCash payment for order ${orderCode || ""} now — this usually only takes a few seconds. ` +
         `You can check its status anytime with "Track Order" using this order number.`
-      : `Your GCash payment for order ${orderCode || ""} didn't go through. The order itself is still saved — ` +
-        `use "Track Order" to find it again and you can message us to arrange another payment method.`;
+      : `Cancelling order ${orderCode || ""} — one moment…`;
   document.getElementById("confirmModal").classList.add("show");
   document.getElementById("confirmOverlay").classList.add("show");
 
   // Drop the query string so refreshing/bookmarking doesn't re-show this.
   window.history.replaceState({}, "", window.location.pathname);
+
+  if (result === "cancelled" && orderRef) {
+    cancelGcashOrder(orderCode, { action: "cancel_checkout", order_id: orderRef });
+  } else if (result === "failed" && orderCode) {
+    // Older Source-flow orders (see create-paymongo-source).
+    cancelGcashOrder(orderCode, { action: "cancel_if_failed", order_code: orderCode });
+  }
+}
+
+/* ---------------------------------------------------------------------
+   The server double-checks with PayMongo before cancelling anything —
+   this redirect alone is never trusted. If PayMongo confirms nothing was
+   paid, the order is cancelled and its items go back on the shelf.
+   --------------------------------------------------------------------- */
+async function cancelGcashOrder(orderCode, payload) {
+  const textEl = document.getElementById("confirmText");
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/${PAYMONGO_SOURCE_FUNCTION_SLUG}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    textEl.textContent = data.cancelled
+      ? `Your GCash payment for order ${orderCode} was cancelled, so the order has been cancelled too. ` +
+        `Nothing was charged — you're welcome to place a new order anytime.`
+      : `We couldn't confirm the status of order ${orderCode} just yet. ` +
+        `Use "Track Order" with this order number to check on it, or message us and we'll sort it out.`;
+  } catch (err) {
+    console.error("Couldn't check GCash payment status:", err);
+    textEl.textContent =
+      `We couldn't confirm the status of order ${orderCode} just yet. ` +
+      `Use "Track Order" with this order number to check on it, or message us and we'll sort it out.`;
+  }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
