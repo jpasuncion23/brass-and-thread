@@ -535,7 +535,18 @@ function updateFulfillmentFields() {
   }
 }
 
+// The confirmation modal is reused for every outcome — reset its stamp
+// and title each time so a "Cancelled" from an earlier GCash return
+// never sticks around for the next order.
+function setConfirmHeader(stamp, title, tone) {
+  const stampEl = document.getElementById("confirmStamp");
+  stampEl.textContent = stamp;
+  stampEl.className = "confirm-stamp" + (tone ? " " + tone : "");
+  document.getElementById("confirmTitle").textContent = title;
+}
+
 function openConfirm(orderCode, total, paymentMethod, contactNumber, fullName, fulfillmentMethod) {
+  setConfirmHeader("Confirmed", "Order Placed");
   const arrangementText =
     fulfillmentMethod === "Pickup"
       ? `We'll reach out at ${contactNumber} to confirm your pickup.`
@@ -1086,6 +1097,11 @@ function handlePaymongoReturn() {
   const orderRef = params.get("ref"); // the order's UUID, only on cancel_url
   if (!result) return;
 
+  if (result === "success") {
+    setConfirmHeader("Confirmed", "Order Placed");
+  } else {
+    setConfirmHeader("Checking", "One moment…", "pending");
+  }
   document.getElementById("confirmText").textContent =
     result === "success"
       ? `Thanks! We're confirming your GCash payment for order ${orderCode || ""} now — this usually only takes a few seconds. ` +
@@ -1119,13 +1135,20 @@ async function cancelGcashOrder(orderCode, payload) {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    textEl.textContent = data.cancelled
-      ? `Your GCash payment for order ${orderCode} was cancelled, so the order has been cancelled too. ` +
-        `Nothing was charged — you're welcome to place a new order anytime.`
-      : `We couldn't confirm the status of order ${orderCode} just yet. ` +
+    if (data.cancelled) {
+      setConfirmHeader("Cancelled", "Order Cancelled", "cancelled");
+      textEl.textContent =
+        `Your GCash payment for order ${orderCode} was cancelled, so the order has been cancelled too. ` +
+        `Nothing was charged — you're welcome to place a new order anytime.`;
+    } else {
+      setConfirmHeader("Pending", "Order Pending", "pending");
+      textEl.textContent =
+        `We couldn't confirm the status of order ${orderCode} just yet. ` +
         `Use "Track Order" with this order number to check on it, or message us and we'll sort it out.`;
+    }
   } catch (err) {
     console.error("Couldn't check GCash payment status:", err);
+    setConfirmHeader("Pending", "Order Pending", "pending");
     textEl.textContent =
       `We couldn't confirm the status of order ${orderCode} just yet. ` +
       `Use "Track Order" with this order number to check on it, or message us and we'll sort it out.`;
